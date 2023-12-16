@@ -231,15 +231,6 @@ Initialise(){
       sleep 120
       exit 1
    fi
-   if [ "${apple_password}" -a "${apple_password}" != "usekeyring" ]; then
-      LogError "Apple password configured with variable which is no longer supported. Please add password to system keyring - exiting"
-      sleep 120
-      exit 1
-   fi
-   if [ "${apple_password}" = "usekeyring" ]; then
-      LogWarning "Apple password variable set to 'userkeyring'. This variable can now be removed as it is now the only supported option, so obsolete - continue in 2 minutes"
-      sleep 120
-   fi
    LogDebug "Running user id: $(id --user)"
    LogDebug "Running group id: $(id --group)"
    if [ "${user}" = "root" ]; then
@@ -257,7 +248,7 @@ Initialise(){
    fi
    if [ "${group_id}" -eq 0 ]; then
       LogWarning "The local group id for synchronisation cannot be 0"
-      unset group_id
+      unset group_id force_gid
    fi
    LogDebug "Local group: ${group:=group}:${group_id:=1000}"
    LogDebug "Force GID: ${force_gid:=false}"
@@ -534,7 +525,12 @@ ConfigureNotifications(){
                echo -n 0 > "${telegram_update_id_offset_file}"
             fi
             LogInfo "Check Telegram bot initialised..."
-            bot_check="$(curl --silent -X POST "https://api.telegram.org/bot${telegram_token}/getUpdates" | jq .ok)"
+            if [ "${telegram_server}" ] ; then
+               bot_check="$(curl --silent -X POST "https://${telegram_server}/bot${telegram_token}/getUpdates" | jq .ok)"
+            else
+               bot_check="$(curl --silent -X POST "https://api.telegram.org/bot${telegram_token}/getUpdates" | jq .ok)"
+            fi
+            LogInfo bot_check
             if [ "${bot_check}" ]; then
                LogInfo " - Bot has been initialised."
             else
@@ -1994,7 +1990,11 @@ SyncUser(){
                   telegram_update_id_offset="$(head -1 "${telegram_update_id_offset_file}")"
                   LogDebug "Polling Telegram for updates newer than: ${telegram_update_id_offset}"
                   telegram_update_id_offset_inc=$((telegram_update_id_offset + 1))
-                  latest_updates="$(curl --request POST --silent --data "allowed_updates=message" --data "offset=${telegram_update_id_offset_inc}" "https://api.telegram.org/bot${telegram_token}/getUpdates" | jq .result[])"
+                  if [ "${telegram_server}" ] ; then
+                     latest_updates="$(curl --request POST --silent --data "allowed_updates=message" --data "offset=${telegram_update_id_offset_inc}" "https://${telegram_server}/bot${telegram_token}/getUpdates" | jq .result[])"
+                  else
+                     latest_updates="$(curl --request POST --silent --data "allowed_updates=message" --data "offset=${telegram_update_id_offset_inc}" "https://api.telegram.org/bot${telegram_token}/getUpdates" | jq .result[])"
+                  fi
                   if [ "${latest_updates}" ]; then
                      latest_update_ids="$(echo "${latest_updates}" | jq -r '.update_id')"
                   fi
