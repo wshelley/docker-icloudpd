@@ -2,7 +2,7 @@
 Environment variables can, for the time being, be used to configure the Docker container. However, configuring containers by using variables is deprecated and will be removed in future versions.
 When the container is first started, it will write a default configuration file "/config/icloudpd.conf" and the variables will be loaded from there. I you find that some things are still being set, even though you have removed the variables from the container, it could be that they are still located in the configuration file.
 
-## CONFGURATION OPTIONS
+## CONFIGURATION OPTIONS
 **apple_id**: This is the Apple ID that will be used when downloading files. This option is mandatory
 
 **user**: This is name of the user account that you wish to create within the container. This can be anything you choose, but ideally you would set this to match the name of the user on the host system for which you want to download files for. This user will be set as the owner of all downloaded files. Default: 'user'. This option is also used as the trigger for remotly initiated sync. Simply send your user name as a message to the Telegram chat, icoudpd will see it, and start a manual sync.
@@ -43,6 +43,8 @@ When the container is first started, it will write a default configuration file 
 
 **delete_notifications**: Specifies whether notifications with a short summary should be sent for file deletions. Default: true.
 
+**startup_notification**: Specifies whether the startup notification should be sent. Default: true.
+
 **delete_accompanying**: Tells the script to delete files which accompany the HEIC files that are downloaded. These are the JPG files which are created if you have HEIC to JPG conversion enabled. They are also the \_HEVC.MOV files which make up part of a live photo. This feature deletes files from your disk. I'm not responsible for any data loss.
 
 **delete_empty_directories**: Tells the script to delete any empty directories it finds in the download path. It will only run if **folder_structure** isn't set to 'none'
@@ -53,7 +55,7 @@ When the container is first started, it will write a default configuration file 
 
 **delete_after_download**: After a file is successfully downloaded it is moved to the Recenlty Deleted folder. This configuration option cannot be used in conjunction with **auto_delete**. Default: false.
 
-**photo_size**: Image size to download. Can be set to **original**, **medium** or **thumb**. Default: original.
+**photo_size**: Image size to download. Can be set to **original**, **medium**, **thumb**, **adjusted**, **alternative** or any combination of those five in a comma-separated string if multiple size types are to be downloaded e.g. **photo_size=original,adjusted**. Adjusted are the edited photos that can be made by using filters, or by using the markup tool in the Photos app. Alternative are RAW file types. Default: original.
 
 **skip_live_photos**: If this is set, it will skip downloading live photos. Default: false.
 
@@ -85,11 +87,22 @@ When the container is first started, it will write a default configuration file 
 
 **auth_china**: Set this to **true** to use icloud.com.cn instead of icloud.com for cookie generation. Default: false.
 
+**fake_user_agent**: Set this to **true** to tell curl to use a fake user agent. This is required for some notification sites which do not allow curl to send notifications, IYUU for one. Sets user agent to: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0"
+
 **synology_photos_app_fix**: Set this to **true** to touch files after download and trigger the Synology Photos app to index any newly created files.
 
 **synology_ignore_path**: Set this to **true** to avoid warnings when trying to change **@eaDir** permissions for the extended attributes directories under Synology system.
 
-**single_pass**: Set this to **true** to exit out after a single pass instead of looping as per the synchronisation_interval. If this option is used, it will automatically disable the download check. If using this configuration option, the restart policy of the container must be set to "no". If it is set to "always" then the container will instantly relaunch after the first run and you will hammer Apple's website.
+**single_pass**: Set this to **true** to exit out after a single pass instead of looping as per the synchronisation_interval. This way, the script can be scheduled to lauch on the host system using cron or another scheduling agent. If this option is used, it will automatically disable the download check. If using this configuration option, the restart policy of the container must be set to "no". If it is set to "always" then the container will instantly relaunch after the first run and you will hammer Apple's website.
+
+**keep_unicode**: Set this to **true** to keep unicode chars in file names or set it to **false** to remove all non-ascii chars. Default: false.
+
+**live_photo_mov_filename_policy**: Set this to **suffix** to add _HEVC to the suffix of the file name. Set it to **original** to set the filename the same as the photo. Default: suffix.
+
+**align_raw**: For photo assets with raw and jpeg, treat raw always in the specified size: **original** (raw+jpeg), **alternative** (jpeg+raw) or **as-is** (unchanged). Default: as-is.
+
+**file_match_policy**: Policy to identify existing files and de-duplicate. **name-size-dedup-with-suffix** appends file size to deduplicate. **name-id7**
+adds asset id from iCloud to all file names and does not need de-duplication. Default: name-size-dedup-with-suffix.
 
 # NEXTCLOUD CONFIGURATION VARIABLES
 
@@ -107,7 +120,7 @@ When the container is first started, it will write a default configuration file 
 
 ## NOTIFICATION CONFIGURATION VARIABLES
 
-**notification_type**: This specifies the method that is used to send notifications. These are the options available **Prowl**, **Pushover**, **Telegram**, **Webhook**, **openhab**, **Dingtalk**, **Discord**, **IYUU**, **WeCom**, **Gotify** and **Bark**. When the multifactor authentication cookie is within 7 days (default) of expiry, a notification will be sent upon synchronisation. No more than a single notification will be sent within a 24 hour period unless the container is restarted. This does not include the notification that is sent each time the container is started.
+**notification_type**: This specifies the method that is used to send notifications. These are the options available **Prowl**, **Pushover**, **Telegram**, **Webhook**, **openhab**, **Dingtalk**, **Discord**, **IYUU**, **WeCom**, **Gotify**, **Bark**, **msmtp**. When the multifactor authentication cookie is within 7 days (default) of expiry, a notification will be sent upon synchronisation. No more than a single notification will be sent within a 24 hour period unless the container is restarted. This does not include the notification that is sent each time the container is started.
 
 **notification_title**: This allows you to change the title which is sent on the notifications. This variable will default to **boredazfcuk/iCloudPD**.
 
@@ -127,7 +140,9 @@ When the container is first started, it will write a default configuration file 
 
 **telegram_polling**: Optional if notification_type set to 'Telegram'. Set this to true to enable Telegram polling. This will check the Telegram chat for messages every 60 seconds. If the latest message is the user name, it will synchronise immediately
 
-**telegram_server**: Optional if notification_type set to 'Telegram'. If Telegram is blocked in your country and you need to use a proxy server to access it, put the fully qualified domain name of the server here.
+**telegram_server**: Optional if notification_type set to 'Telegram'. If Telegram is blocked in your country and you need to use a proxy server to access it, put the fully qualified domain name of the server here. e.g. proxy.server.com
+
+**telegram_http**: Optional if notification_type set to 'Telegram'. If Telegram is retricted to HTTP only in your country, set this to **true** so that HTTP is used instead of HTTPS. Default = false
 
 **webhook_server**: Mandatory if notification_type set to 'Webhook' or 'openhab' then this is the name of the server to connect to when sending webhook notifications.
 
@@ -141,6 +156,8 @@ When the container is first started, it will write a default configuration file 
 
 **webhook_body**: Adapt to different services. Homeassistant uses "data" in the body of the webhook request, Discord uses "content", IFTTT uses "value1", etc.. Defaults to "data".
 
+**webhook_insecure**: Set to **true** to allow insecure https certificates, such as self-signed.
+
 **dingtalk_token**: Mandatory if notification_type set to 'Dingtalk' then this is the access token generated by the Dingtalk application. In the Dingtalk application, go to 'Security Settings', select 'Custom Keywords' and set to to the same value as **notification_title**.
 
 **discord_id**: This is the first half of the URL generated by Discord's webhook integration.  It will be all numbers.  Do not include any /
@@ -148,7 +165,6 @@ When the container is first started, it will write a default configuration file 
 **discord_token**: This is the second half of the URL generated by Discords webhook integration.  Do no include any /
 
 **iyuu_token**: Mandatory if notification_type set to 'IYUU'. This is the access token required to send messages.
-
 
 **wecom_id**: Mandatory if notification_type set to 'WeCom'.企业微信通知，企业微信通知，企业ID / This is the CORPID associated with your account。企业微信通知配置也可参见[此项目链接](https://github.com/Alano-i/wecom-notification/tree/main/iCloudPD)
 
@@ -176,11 +192,28 @@ When the container is first started, it will write a default configuration file 
 
 **gotify_app_token**: Mandatory if notification_type set to 'Gotify'. This is the app_token associated with your account.
 
+**gotify_https**: If this is set to 'True' then the Gotify server URL will use HTTPS, otherwise it will default to HTTP.
+
 **gotify_server_url**: Mandatory if notification_type set to 'Gotify'. This is the server name of your Gotify server e.g. server.domain.tld
 
-**bark_device_key**: Mandatory if notification_type set to 'Bark'. This is the device key associated with your device
+**bark_device_key**: Mandatory if notification_type set to 'Bark'. This is the device key associated with your device.
 
-**bark_server**: Mandatory if notification_type set to 'Bark'. This is the name of your Bark server, including the port, if required. e.g. server.domain.com or server.domain.com:8080
+**bark_server**: Mandatory if notification_type set to 'Bark'. This is the name of your Bark server. Please note that the port should not be included and currently the project only supports http.
+If you use the official Bark server, please fill the field with `api.day.app`.
+
+**msmtp_host**: Mandatory if notification_type set to `msmtp`. The domain of your smtp server
+
+**msmtp_port**: Mandatory if notification_type set to `msmtp`. The port of the smtp service. Normally 465 or 587
+
+**msmtp_tls**: Mandatory if notification_type set to `msmtp`. Set to `on` or `off` to enable or disable TLS encryption.
+
+**msmtp_from**: Mandatory if notification_type set to `msmtp`. The sender's email address
+
+**msmtp_user**: Mandatory if notification_type set to `msmtp`. The login username for your SMTP provider.
+
+**msmtp_pass**: Mandatory if notification_type set to `msmtp`. The password for the login user
+
+**msmtp_args**: Optional extra arguments for `msmtp` in case your mail provider has specific requirements. For example, `--tls-starttls=off`.
 
 ## VOLUME CONFIGURATION
 
@@ -299,7 +332,34 @@ This will then place a multifactor authentication cookie into the /config folder
 
 After this, the container should start downloading your photos.
 
-Dockerfile has a health check which will change the status of the container to 'unhealthy' if the cookie is due to expire within a set number of days (notification_days) and also if the download fails. 
+Dockerfile has a health check which will change the status of the container to 'unhealthy' if the cookie is due to expire within a set number of days (notification_days) and also if the download fails.
+
+## MULTIFACTOR RE-AUTHENTICATION
+Every 30 days, the cookie will expire and need to be re-authenticated. This can be done by running the re-authentication script:
+
+```
+docker container exec -it reauth.sh
+```
+
+It will then launch the re-authentication process, presenting you with an MFA code on your iDevice and asking for this new code on the command line. e.g:
+
+```
+2024-03-27 22:21:33 DEBUG    Authenticating...
+2024-03-27 22:21:35 INFO     Two-step/two-factor authentication is required (2fa)
+Please enter two-factor authentication code: 123456
+2024-03-27 22:21:55 WARNING  Failed to parse response with JSON mimetype
+2024-03-27 22:21:57 INFO     Great, you're all set up. The script can now be run without user interaction until 2SA expires.
+You can set up email notifications for when the two-step authentication expires.
+(Use --help to view information about SMTP options.)
+2024-03-27 22:21:57 INFO     Authentication completed successfully
+```
+
+# TELEGRAM 2-WAY COMMUNICATIONS
+## Remote Synchronisation
+If you are using Telegram as your notification application, you can now send messages to the chat bot, which the container will read, and then take the appropriate action. If you simply message the chatbot with the user that you have configured in the **user** variable, it will pick that up and force a synchronisation. So if you're down the pub with your mates, take a bunch of pics that you really like, simply message `boredazfcuk` (or whatever you've configured your user variable to be) to the Telegram bot and it will force a synchronisation, downloading your new photos within the next few minutes.
+
+## Remote Re-authentication
+Apple have recently reduced the re-authentication tim from 90 days to 30 days. This means connecting to your container, re-initialising it and completing multi-factor authentication. If I am out of the house and my cookie expires, I would need to wait until I get home, faff about with the whole process I just described. Now, you can message your container in a similar manner to the remote syncronisation, but adding `auth` to the end of the message, so for example `boredazfcuk auth`. After you have done this, I find it is best to start typing another message starting `boredazfcuk ` (note the space) and then changing the keyboard to number input. The container should pick up this instruction within a minute and it will message you back asking for the MFA code. It will start the re-authentication process and your iDevice will display a popup to `allow` or `deny` the connection. Click `allow` and you will be presented with your multi-factor authentication code. Memorise this code and add it to the end of your message, like `boredazfcuk 123456` and hit send. The container will then use this code to re-initialise your cookie and start downloading your photos again. One word of caution though... Literally every company on the planet tells you never to share this code with anyone. I put this feature in because... well... I trust me. I don't believe in putting blind faith in other though. So neither should you. Feel free to read the source code, so you can make sure it's not doing anything nefarious, by checking it yourself. I understand that not everyone can code though, so if you don't trust it, that's totally OK, probably a good choice on your behalf. To be fair, I'm just a dude with an IT hobby. I couldn't care less about your iCloud account, your contacts, or the pictures of your cat/dog. I just hope this makes you life better in some tiny way.
 
 ## COMMAND LINE PARAMETERS
 
@@ -311,14 +371,17 @@ To run the script inside the currently running container, issue this command (as
 `docker exec -it icloudpd sync-icloud.sh --Convert-All-HEICs`
 
 **--Force-Convert-All-HEICs**
-This command line is the same as the above option but it will overwrite any JPEG files that are already there. This will result in data loss if the downloaded JPEG files have been edited. For this reason, there is a 2 minute delay before this option runs. This gives you time to stop the container, or cancel the script, before it runs. This option is required as the heif-tools conversion utility had a bug that over-rotates the JPEG files. This means the orientation does not match the HEIC file. The heif-tools package has now been replaced by the ImageMagick package which doesn't have this problem. This command line option can be used to re-convert all your HEIC files to JPEG, overwriting the incorrectly oriented files with correctly oriented ones.
+This command line option is the same as the above option but it will overwrite any JPEG files that are already there. This will result in data loss if the downloaded JPEG files have been edited. For this reason, there is a 2 minute delay before this option runs. This gives you time to stop the container, or cancel the script, before it runs. This option is required as the heif-tools conversion utility had a bug that over-rotates the JPEG files. This means the orientation does not match the HEIC file. The heif-tools package has now been replaced by the ImageMagick package which doesn't have this problem. This command line option can be used to re-convert all your HEIC files to JPEG, overwriting the incorrectly oriented files with correctly oriented ones.
 To run the script inside the currently running container, issue this command (assuming the container name is 'icloudpd'):
 `docker exec -it icloudpd sync-icloud.sh --Force-Convert-All-HEICs`
 
 **--Force-Convert-All-mnt-HEICs**
-This command line is the same as the above option but it will overwrite any JPEG files that it finds in the /mnt subdirectory. This will result in data loss if the downloaded JPEG files have been edited. For this reason, there is a 2 minute delay before this option runs. This gives you time to stop the container, or cancel the script, before it runs. This option is required as the heif-tools conversion utility had a bug that over-rotates the JPEG files. This means the orientation does not match the HEIC file. The heif-tools package has now been replaced by the ImageMagick package which doesn't have this problem. This command line option can be used to re-convert all your HEIC files to JPEG, overwriting the incorrectly oriented files with correctly oriented ones. This option can be used to correct JPG files that have been archived and removed from your iCloud photostream. Just mount the target directory (or directories) into the /mnt subdirectoy and the script with this command.
+This command line option is the same as the above option but it will overwrite any JPEG files that it finds in the /mnt subdirectory. This will result in data loss if the downloaded JPEG files have been edited. For this reason, there is a 2 minute delay before this option runs. This gives you time to stop the container, or cancel the script, before it runs. This option is required as the heif-tools conversion utility had a bug that over-rotates the JPEG files. This means the orientation does not match the HEIC file. The heif-tools package has now been replaced by the ImageMagick package which doesn't have this problem. This command line option can be used to re-convert all your HEIC files to JPEG, overwriting the incorrectly oriented files with correctly oriented ones. This option can be used to correct JPG files that have been archived and removed from your iCloud photostream. Just mount the target directory (or directories) into the /mnt subdirectoy and the script with this command.
 To run the script inside the currently running container, issue this command (assuming the container name is 'icloudpd'):
 `docker exec -it icloudpd sync-icloud.sh --Force-Convert-All-mnt-HEICs`
+
+**--Remove-All-JPGs**
+This command line option removes all the JPEG files which have a matching HEIC. My day-2-day laptop is Windows 11 and HEIC support is now baked into the OS. I've no need for JPGs anymore as I can view the HEICs and their thumbnails without issue. I created this to just purge all the JPEGs which have a HEIC with a matching filename. This could well remove JPEGs that have matching named HEICs, but are actually different photos. Oh well.
 
 **--Correct-JPEG-Time-Stamps**
 This command line option will correct the timestamps of JPEG files that do not match their accompanying HEIC files. Due to an omission, previous versions of my script never set the time stamp. This command line option will correct this issue.
