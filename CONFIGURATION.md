@@ -9,7 +9,7 @@ When the container is first started, it will write a default configuration file 
 
 **user_id**: This is the User ID number of the above user account. This can be any number that isn't already in use. Ideally, you should set this to be the same ID number as the user's ID on the host system. This will avoid permissions issues if syncing to your host's home directory. Default: '1000'.
 
-**group**: This is name of the group account that you wish to create within the container. This can be anything you choose, but ideally you would set this to match the name of the user's primary group on the host system. This This group will be set as the group for all downloaded files. Default: 'group'.
+**group**: This is name of the group account that you wish to create within the container. This can be anything you choose, but ideally you would set this to match the name of the user's primary group on the host system. This group will be set as the group for all downloaded files. Default: 'group'.
 
 **group_id**: This is the Group ID number of the above group. This can be any number that isn't already in use. Ideally, you should set this to be the same Group ID number as the user's primary group on the host system. Default: '1000'.
 
@@ -49,11 +49,15 @@ When the container is first started, it will write a default configuration file 
 
 **delete_empty_directories**: Tells the script to delete any empty directories it finds in the download path. It will only run if **folder_structure** isn't set to 'none'
 
-**set_exif_datetime**: Write the DateTimeOriginal exif tag from file creation date. Default: false.
+**set_exif_datetime**: Write the DateTimeOriginal exif tag from file creation date. Warning: Setting this option will alter the local file and result in the original being downloaded again, with a de-duplication suffix added to the name. Default: false.
 
 **auto_delete**: Scans the "Recently Deleted" folder and deletes any files found in there. (If you restore the photo in iCloud, it will be downloaded again). Default: false.
 
 **delete_after_download**: After a file is successfully downloaded it is moved to the Recenlty Deleted folder. This configuration option cannot be used in conjunction with **auto_delete**. Default: false.
+
+**keep_icloud_recent_days**: Set this to an integer number to only keep the most recent *n* number of days. Setting this to 0 will remove all photos from iCloud. This configuration option cannot be used in conjunction with **delete_after_download**. Default: Not set (keep all).
+
+**keep_icloud_recent_only**: Set this to **true** to enable the option above. Default: false
 
 **photo_size**: Image size to download. Can be set to **original**, **medium**, **thumb**, **adjusted**, **alternative** or any combination of those five in a comma-separated string if multiple size types are to be downloaded e.g. **photo_size=original,adjusted**. Adjusted are the edited photos that can be made by using filters, or by using the markup tool in the Photos app. Alternative are RAW file types. Default: original.
 
@@ -93,6 +97,10 @@ When the container is first started, it will write a default configuration file 
 
 **synology_ignore_path**: Set this to **true** to avoid warnings when trying to change **@eaDir** permissions for the extended attributes directories under Synology system.
 
+**sideways_copy_videos**: Set this to **true** to have the container copy the downloaded videos to another directory. This directory must be specified in the **video_path** directory. Default: false
+
+**sideways_copy_videos_mode**: Seto this to **copy** to have the **sideways_copy_videos** function copy files, leaving the original in place. Set this to **move** to have it move files to the destination directory. If **move** is specified, then **delete_after_download** must be set to **true**. This is to avoid a situation where all video files are moved out of the download folder, then re-downloaded when the next syncronisation occurs. By having **delete_after_download** set to **true** it means that each downloaded video is removed from iCloud after it's downloaded, so it would not be possible for the container to re-download the file after it is moved from the download directory.
+
 **single_pass**: Set this to **true** to exit out after a single pass instead of looping as per the synchronisation_interval. This way, the script can be scheduled to lauch on the host system using cron or another scheduling agent. If this option is used, it will automatically disable the download check. If using this configuration option, the restart policy of the container must be set to "no". If it is set to "always" then the container will instantly relaunch after the first run and you will hammer Apple's website.
 
 **keep_unicode**: Set this to **true** to keep unicode chars in file names or set it to **false** to remove all non-ascii chars. Default: false.
@@ -103,6 +111,8 @@ When the container is first started, it will write a default configuration file 
 
 **file_match_policy**: Policy to identify existing files and de-duplicate. **name-size-dedup-with-suffix** appends file size to deduplicate. **name-id7**
 adds asset id from iCloud to all file names and does not need de-duplication. Default: name-size-dedup-with-suffix.
+
+**video_path**: 
 
 # NEXTCLOUD CONFIGURATION VARIABLES
 
@@ -412,6 +422,9 @@ To run the script inside the currently running container, issue this command (as
 This command line option will upload your entire library to the Nextcloud server. First, it will scan your download directory, then replicate the directory structure on the Nextcloud server. Once this is complete, it will proceed upload the files to these directories.
 To run the script inside the currently running container, issue this command (assuming the container name is 'icloudpd'):
 `docker exec -it icloudpd sync-icloud.sh --Upload-Library-To-Nextcloud`
+
+**--Sideways-Copy-All-Videos**
+This command will copy all the videos in your download path to the location specified in the **video_path** variable. It will check the value of the **sideways_copy_all_videos_mode** variable to determine the copy mode, which can be either 'copy' or 'move'. If the copy mode is set to 'move' then the **delete_after_download** vairable must also be set to **true**. This is because moving the vidoes out of the the main download location will cause icloudpd to re-download the videos from iCloud. If **delete_after_download** is set, then iCloud should be empty, so the endless loop of downloading videos should not occurr.
 
 **--List-Albums**
 This commmand will list the names of the albums available to download
