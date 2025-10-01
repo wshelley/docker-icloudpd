@@ -1,3 +1,90 @@
+02/09/2025
+
+ - Bump to icloud-photos-downloader 1.32.2
+
+20/08/2025
+
+ - Bump to icloud-photos-downloader 1.31.0
+ - Add `--keep-unicode-in-filenames` to new files check launch command
+ - The --keep-unicode-in-filenames addition broke stuff. Turns out it needs a boolean parameter, instead of just beeing true if present and false if not.
+
+19/08/2025
+
+ - Bump to icloud-photos-downloader 1.30.0
+
+17/08/2025
+
+ - Typo "File exsits"
+ - Bump to icloud-photos-downloader 1.29.4
+
+16/08/2025
+
+ - Found a bug which was resulting in .JPG/.PNG files being uploaded to Nextcloud as .JPG.JPG and .PNG.JPG
+
+26/07/2025
+
+ - Merged PR from derjoerg which fixes Signal JSON escaping
+
+14/07/2025
+
+ - Think I found a bug. I pinched the code to convert a directory full of HEIC files into JPEGs, made some mods, and then connected to the containers and pasted the code to the command line. The `find` command was broken as it needed double quotes around the *.HEIC. Found this error in 6 other places so have now quoted them all.
+ 
+06/07/2025
+
+ - Corrected a typo in the launcher.sh script
+ - Added a check in the main script to make sure the Telegram polling file is created. Should be performed in the launcher, but I've created a new container for a new Apple ID and ran into the error
+
+11/05/2025
+
+ - Changed Dockerfile so that it attempts to install the named version of iCloud Photos Downloader, rather than just the latest version, assuming that PyPi's working and latest verison is published correctly
+ - Changed syncrhonisation_time so it's set at every scheduled sync, rather than every successful download, in the hopes it will make the expiration notifications sent out more reliably
+ - Changed everything so that it refers to "download" instead of "synchronisation". Synchonisation implies that there is file tracking, or more advanced method of keeping files "in sync" rather than "syncronisation" of the "All Photos" meta-album being by removing photos found in the "Recently Deleted" folder. This seems to be adding confusion as peope are raising issues about files not being deleted hen they are removed, or moved, between albums.
+
+10/05/2025
+
+ - Upgraded icloud_photos_downloader to v1.27.5
+ - Removed requirement for smtp username and password
+ - Changed some logging stuff
+ - Attempt to silence jq errors if getting Telegram updates fails
+
+08/05/2025
+
+ - New variable **silent_file_notifications** will send low priority messages for file downloads and file deletions so that notifications are sent, but you don't get alerted with sounds/vibrations.
+ 
+18/03/2025
+
+ - Launcher now halts if both photo_album and photo_library are configured as these options conflict with each other
+
+20/02/2025
+
+ - Launcher now checks that **download_path**, **jpeg_path** and **video_path** exist in /proc/mounts (if they are configured0. This should confirm that these directories are mounted to external locations at container launch. The .mounted file is still a requirement, as this makes sure the container is looking at the correct external mount and also that the volume hasn't dismounted due to errors.
+ - Remove trailing slashes from variables which could have them, like download_path, jpeg_path, video_path, the Nextcloud URL and target dir
+ - A load of stuff I lost track of regarding conversion of jpegs and stuff. I'm a bit tipsy and probably broke a bunch of stuff. Previously there was an ugly bunch of hardcoding around HEIC/JPG file extensions... case insensitive searches, but ignoring ".heic" files etc. This uncovered a bunch of other areas where I'd copy/pasted code... so for sideways copying videos and stuff. Find other things which just didn't work in testing at all (unescaped characters in bash expansion). I've no idea ho this worked previously... maybe it's a bash/ash difference which will **** things over in side the container. Yes, I'm an adult, I can put **** if I want to, so go **** yourself if you don't like it.
+ - Rebased to Alpine Linux 3.21.3 coz apparently that's a thing now.
+ - Aw man. This just feels really broken, but it's not chucking errors out everywhere in my testing. Sod it. I'll push it to Dockerhub and deal with the fallout tomorrow. I have stuff to do on Saturday so no drinking tomorrow for me. Can fix stuff then if everything blows up.
+
+19/02/2025
+
+ - Made notification_type case insensitive. Some dude was using "discord" instead of "Discord". Both will work now.
+
+17/02/2025
+
+ - Setting the umask via /etc/passwd didn't work as expected. Now configuring via /etc/profile as it should be consistent whether using interactive or non-interactive shells. 
+
+16/02/2025
+
+ - Now setting umask based on file permissions. This should result in files being created with correct permissions, if they are created with a non-default umask (022), rather than relying on the functions to correct permissions being run.
+ - Change the variable name save_ifs to OLDIFS. Think I like that more.
+ 
+13/02/2025
+
+ - Changed the launcher to check that notifications are configured correctly pre-launch. 
+ - Fixed Nextcloud URL log display which was missing a / character between the webroot and desination directory
+ 
+05/02/2025
+
+ - Changed the Telegram bot check so that it only occurs once, during the launch script. Once it successfully verifies the bot, it updates a new variable in the config file and will never check again. For some reason I see it failling to verify my own bot occasionally. I think the check fails randomly for some reason. I've no need to do it each time though as the update number is tracked via file in /config so it should be able to work even if verification fails.
+
 02/02/2025
 
  - Amended initialisation script to hang if it can't create the temporary files
@@ -87,11 +174,11 @@
  
 08/12/2024
 
- - A bunch more Nextcloud stuff done over the weekend. All functions now reworked except for the one that uploads the entrie library. Not as much space saved as I'd liked. The upload function was actually pretty well written, plus I broke them into separate functions for creating directories and uploading files. I also found a potential issue regarding case sensitivity and the HEIC conversion tool, so added a bunch of code to handle that. Hopefully I'll get some time to finish the last function tomorrow/Tuesday.
+ - A bunch more Nextcloud stuff done over the weekend. All functions now reworked except for the one that uploads the entire library. Not as much space saved as I'd liked. The upload function was actually pretty well written, plus I broke them into separate functions for creating directories and uploading files. I also found a potential issue regarding case sensitivity and the HEIC conversion tool, so added a bunch of code to handle that. Hopefully I'll get some time to finish the last function tomorrow/Tuesday.
 
 05/12/2024
 
- - Bit of work regarding the Nextcloud stuff. Rewritten the function that creates the directories prior to uploading. It now generates the list of encoded directory paths before attempting to create them. Seems a lot cleaner. Code has gone from about 40 lines to 30 lines, a reduction of over 200 characters. S/hould be able to make similar gains surrounding the nextcloud_upload, nextcloud_delete and double the amoutn for the upload_library_to_nextcloud functions... iirc.
+ - Bit of work regarding the Nextcloud stuff. Rewritten the function that creates the directories prior to uploading. It now generates the list of encoded directory paths before attempting to create them. Seems a lot cleaner. Code has gone from about 40 lines to 30 lines, a reduction of over 200 characters. Should be able to make similar gains surrounding the nextcloud_upload, nextcloud_delete and double the amoutn for the upload_library_to_nextcloud functions... iirc.
  - Also, Alpine Linux 3.21.0 has dropped so rebuilt with that.
 
 03/12/2024

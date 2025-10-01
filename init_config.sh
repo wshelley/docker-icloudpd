@@ -1,5 +1,12 @@
 #!/bin/ash
 
+# Move from synchronisation_interval to download_interval and from synchronisation_delay to download_delay
+if [ -f "${config_file}" ]
+then
+   sed -i 's/^synchronisation_interval=/download_interval=/g' "${config_file}"
+   sed -i 's/^synchronisation_delay=/download_delay=/g' "${config_file}"
+fi
+
 # Add missing options to the config file and if a Docker variable exists, use that to set the default value
 {
    if [ "$(grep -c "^albums_with_dates=" "${config_file}")" -eq 0 ]
@@ -80,8 +87,8 @@
    fi
    if [ "$(grep -c "^download_path=" "${config_file}")" -eq 0 ]
    then
-        user="$(grep "^user=" "${config_file}" | awk -F= '{print $2}')"
-        echo download_path="${download_path:=/home/${user:=user}/iCloud}"
+      user="$(grep "^user=" "${config_file}" | awk -F= '{print $2}')"
+      echo download_path="${download_path:=/home/${user:=user}/iCloud}"
    fi
    if [ "$(grep -c "^fake_user_agent=" "${config_file}")" -eq 0 ]
    then
@@ -235,6 +242,26 @@
    then
       echo sideways_copy_videos_mode="${sideways_copy_mode:=copy}"
    fi
+   if [ "$(grep -c "^signal_host=" "${config_file}")" -eq 0 ]
+   then
+      echo signal_host="${signal_host}"
+   fi
+   if [ "$(grep -c "^signal_port=" "${config_file}")" -eq 0 ]
+   then
+      echo signal_port="${signal_port}"
+   fi
+   if [ "$(grep -c "^signal_number=" "${config_file}")" -eq 0 ]
+   then
+      echo signal_number="${signal_number}"
+   fi
+   if [ "$(grep -c "^signal_recipient=" "${config_file}")" -eq 0 ]
+   then
+      echo signal_recipient="${signal_recipient}"
+   fi
+   if [ "$(grep -c "^silent_file_notifications=" "${config_file}")" -eq 0 ]
+   then
+      echo silent_file_notifications="${silent_file_notifications:=false}"
+   fi
    if [ "$(grep -c "^single_pass=" "${config_file}")" -eq 0 ]
    then
       echo single_pass="${single_pass:=false}"
@@ -267,13 +294,13 @@
    then
       echo startup_notification="${startup_notification:=true}"
    fi
-   if [ "$(grep -c "^synchronisation_delay=" "${config_file}")" -eq 0 ]
+   if [ "$(grep -c "^download_delay=" "${config_file}")" -eq 0 ]
    then
-      echo synchronisation_delay="${synchronisation_delay:=0}"
+      echo download_delay="${download_delay:=0}"
    fi
-   if [ "$(grep -c "^synchronisation_interval=" "${config_file}")" -eq 0 ]
+   if [ "$(grep -c "^download_interval=" "${config_file}")" -eq 0 ]
    then
-      echo synchronisation_interval="${synchronisation_interval:=86400}"
+      echo download_interval="${download_interval:=86400}"
    fi
    if [ "$(grep -c "^synology_ignore_path=" "${config_file}")" -eq 0 ]
    then
@@ -282,6 +309,10 @@
    if [ "$(grep -c "^synology_photos_app_fix=" "${config_file}")" -eq 0 ]
    then
       echo synology_photos_app_fix="${synology_photos_app_fix:=false}"
+   fi
+   if [ "$(grep -c "^telegram_bot_initialised=" "${config_file}")" -eq 0 ]
+   then
+      echo telegram_bot_initialised=false
    fi
    if [ "$(grep -c "^telegram_chat_id=" "${config_file}")" -eq 0 ]
    then
@@ -299,17 +330,13 @@
    then
       echo telegram_server="${telegram_server}"
    fi
-   if [ "$(grep -c "^telegram_silent_file_notifications=" "${config_file}")" -eq 0 ]
-   then
-      echo telegram_silent_file_notifications="${telegram_silent_file_notifications}"
-   fi
    if [ "$(grep -c "^telegram_token=" "${config_file}")" -eq 0 ]
    then
       echo telegram_token="${telegram_token}"
    fi
-   if [ "$(grep -c "^trigger_nextlcoudcli_synchronisation=" "${config_file}")" -eq 0 ]
+   if [ "$(grep -c "^trigger_nextlcoudcli_download=" "${config_file}")" -eq 0 ]
    then
-      echo trigger_nextlcoudcli_synchronisation="${trigger_nextlcoudcli_synchronisation}"
+      echo trigger_nextlcoudcli_download="${trigger_nextlcoudcli_download}"
    fi
    if [ "$(grep -c "^until_found=" "${config_file}")" -eq 0 ]
    then
@@ -325,7 +352,7 @@
    fi
    if [ "$(grep -c "^video_path=" "${config_file}")" -eq 0 ]
    then
-      echo video_path="${video_path}"
+      echo video_path=
    fi
    if [ "$(grep -c "^webhook_https=" "${config_file}")" -eq 0 ]
    then
@@ -604,13 +631,13 @@ if [ -z "$(grep "^startup_notification=" "${config_file}" | awk -F= '{print $2}'
 then
    sed -i "s%^startup_notification=$%startup_notification=true%" "${config_file}"
 fi
-if [ -z "$(grep "^synchronisation_delay=" "${config_file}" | awk -F= '{print $2}')" ]
+if [ -z "$(grep "^download_delay=" "${config_file}" | awk -F= '{print $2}')" ]
 then
-   sed -i "s%^synchronisation_delay=$%synchronisation_delay=0%" "${config_file}"
+   sed -i "s%^download_delay=$%download_delay=0%" "${config_file}"
 fi
-if [ -z "$(grep "^synchronisation_interval=" "${config_file}" | awk -F= '{print $2}')" ]
+if [ -z "$(grep "^download_interval=" "${config_file}" | awk -F= '{print $2}')" ]
 then
-   sed -i "s%^synchronisation_interval=$%synchronisation_interval=86400%" "${config_file}"
+   sed -i "s%^download_interval=$%download_interval=86400%" "${config_file}"
 fi
 if [ -z "$(grep "^synology_ignore_path=" "${config_file}" | awk -F= '{print $2}')" ]
 then
@@ -752,8 +779,8 @@ then
 fi
 if [ "${folder_structure}" ]
 then
-  sanitised_folder_structure="${folder_structure//\//\\/}"
-  sed -i "s@^folder_structure=.*@folder_structure=${sanitised_folder_structure}@" "${config_file}"
+   sanitised_folder_structure="${folder_structure//\//\\/}"
+   sed -i "s@^folder_structure=.*@folder_structure=${sanitised_folder_structure}@" "${config_file}"
 fi
 if [ "${force_gid}" ]
 then
@@ -891,6 +918,10 @@ if [ "${sideways_copy_mode}" ]
 then
    sed -i "s%^sideways_copy_videos_mode=.*%sideways_copy_videos_mode=${sideways_copy_mode}%" "${config_file}"
 fi
+if [ "${silent_file_notifications}" ]
+then
+   sed -i "s%^silent_file_notifications=.*%silent_file_notifications=${silent_file_notifications}%" "${config_file}"
+fi
 if [ "${single_pass}" ]
 then
    sed -i "s%^single_pass=.*%single_pass=${single_pass}%" "${config_file}"
@@ -923,13 +954,13 @@ if [ "${startup_notification}" ]
 then
    sed -i "s%^startup_notification=.*%startup_notification=${startup_notification}%" "${config_file}"
 fi
-if [ "${synchronisation_delay}" ]
+if [ "${download_delay}" ]
 then
-   sed -i "s%^synchronisation_delay=.*%synchronisation_delay=${synchronisation_delay}%" "${config_file}"
+   sed -i "s%^download_delay=.*%download_delay=${download_delay}%" "${config_file}"
 fi
-if [ "${synchronisation_interval}" ]
+if [ "${download_interval}" ]
 then
-   sed -i "s%^synchronisation_interval=.*%synchronisation_interval=${synchronisation_interval}%" "${config_file}"
+   sed -i "s%^download_interval=.*%download_interval=${download_interval}%" "${config_file}"
 fi
 if [ "${synology_ignore_path}" ]
 then
@@ -955,17 +986,13 @@ if [ "${telegram_server}" ]
 then
    sed -i "s%^telegram_server=.*%telegram_server=${telegram_server}%" "${config_file}"
 fi
-if [ "${telegram_silent_file_notifications}" ]
-then
-   sed -i "s%^telegram_silent_file_notifications=.*%telegram_silent_file_notifications=${telegram_silent_file_notifications}%" "${config_file}"
-fi
 if [ "${telegram_token}" ]
 then
    sed -i "s%^telegram_token=.*%telegram_token=${telegram_token}%" "${config_file}"
 fi
-if [ "${trigger_nextlcoudcli_synchronisation}" ]
+if [ "${trigger_nextlcoudcli_download}" ]
 then
-   sed -i "s%^trigger_nextlcoudcli_synchronisation=.*%trigger_nextlcoudcli_synchronisation=${trigger_nextlcoudcli_synchronisation}%" "${config_file}"
+   sed -i "s%^trigger_nextlcoudcli_download=.*%trigger_nextlcoudcli_download=${trigger_nextlcoudcli_download}%" "${config_file}"
 fi
 if [ "${until_found}" ]
 then
@@ -1088,8 +1115,44 @@ then
    sed -i "s%^media_id_warning=.*%media_id_warning=${media_id_warning}%" "${config_file}"
 fi
 
+# Set case sensitive variables to lowercase
+notification_type_lc="$(grep "^notification_type=" /config/icloudpd.conf | awk -F= '{print $2}' | tr '[:upper:]' '[:lower:]')"
+if [ "${notification_type_lc}" ]
+then
+   sed -i "s%^notification_type=.*%notification_type=${notification_type_lc}%" "${config_file}"
+fi
+
+# Remove trailing slashes on directories
+download_path_temp="$(grep "^download_path=" /config/icloudpd.conf | awk -F= '{print $2}')"
+if [ "${download_path_temp}" ]
+then
+   sed -i "s#^download_path=.*#download_path=${download_path_temp%/}#" "${config_file}"
+fi
+jpeg_path_temp="$(grep "^jpeg_path=" /config/icloudpd.conf | awk -F= '{print $2}')"
+if [ "${jpeg_path_temp}" ]
+then
+   sed -i "s#^jpeg_path=.*#jpeg_path=${jpeg_path_temp%/}#" "${config_file}"
+fi
+video_path_temp="$(grep "^video_path=" /config/icloudpd.conf | awk -F= '{print $2}')"
+if [ "${video_path_temp}" ]
+then
+   sed -i "s%^video_path=.*%video_path=${video_path_temp%/}%" "${config_file}"
+fi
+nextcloud_url_temp="$(grep "^nextcloud_url=" /config/icloudpd.conf | awk -F= '{print $2}')"
+if [ "${nextcloud_url_temp}" ]
+then
+   sed -i "s%^nextcloud_url=.*%nextcloud_url=${nextcloud_url_temp%/}%" "${config_file}"
+fi
+nextcloud_target_dir_temp="$(grep "^nextcloud_target_dir=" /config/icloudpd.conf | awk -F= '{print $2}')"
+if [ "${nextcloud_target_dir_temp}" ]
+then
+   sed -i "s%^nextcloud_target_dir=.*%nextcloud_target_dir=${nextcloud_target_dir_temp%/}%" "${config_file}"
+fi
+
+# Update config file
 mv "${config_file}" "${config_file}.tmp"
 sort "${config_file}.tmp" --output="${config_file}"
+sed -i '/^$/d' "${config_file}.tmp"
 chmod --reference="${config_file}.tmp" "${config_file}"
 rm "${config_file}.tmp"
 

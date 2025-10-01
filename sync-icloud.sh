@@ -3,169 +3,74 @@
 ##### Functions #####
 initialise_script()
 {
-   
+   OLDIFS="${IFS}"
+   login_counter=0
+   local icloud_dot_com dns_counter
    log_info "***** boredazfcuk/icloudpd container v1.0.$(cat /opt/build_version.txt) started *****"
    log_info "***** For support, please go here: https://github.com/boredazfcuk/docker-icloudpd *****"
-   log_info "$(cat /etc/*-release | grep "^NAME" | cut -d= -f2 | sed 's/"//g') $(cat /etc/*-release | grep "VERSION_ID" | cut -d= -f2 | sed 's/"//g')"
+   log_info "$(cat /etc/*-release | grep "^NAME" | cut -d= -f2 | sed 's/"//g') v$(cat /etc/*-release | grep "VERSION_ID" | cut -d= -f2 | sed 's/"//g')"
    log_info "Python version: $(cat /tmp/icloudpd/python_version)"
    log_info "icloud-photos-downloader version: $(cat /tmp/icloudpd/icloudpd_version)"
-   log_info "Loading configuration from: ${config_file}"
-   source "${config_file}"
-   save_ifs="${IFS}"
    lan_ip="$(hostname -i)"
-   login_counter=0
+   log_debug "LAN IP Address: ${lan_ip}"   
+   log_debug "Default gateway: $(ip route | grep default | awk '{print $3}')"
+   log_debug "DNS server: $(grep nameserver /etc/resolv.conf | awk '{print $2}')"
+   log_info "Loading configuration from: ${config_file}"
+   source "${config_file}"  
    apple_id="$(echo -n "${apple_id}" | tr '[:upper:]' '[:lower:]')"
+   apple_id_prefix="${apple_id%%@*}"
+   apple_id_suffix="${apple_id##*@}"
+   apple_id_domain="${apple_id_suffix%%.*}"
+   apple_id_tld="${apple_id##*.}"
+   apple_id_censored="${apple_id_prefix:0:1}******${apple_id_prefix:0-1}@${apple_id_domain:0:1}******.${apple_id_tld}"
+   log_info " | Apple ID: ${apple_id_censored}"
    cookie_file="$(echo -n "${apple_id//[^a-z0-9_]/}")"
+   cookie_file_censored="$(echo -n "${apple_id_censored//[^a-z0-9_*]/}")"
+   log_info "   - Cookie path: /config/${cookie_file_censored}"
+   if [ "${debug_logging}" = true ]
+   then
+      log_info " | Debug logging: Enabled"
+      log_level="debug"
+   else
+      log_info " | Debug logging: Disabled"
+      log_level="info"
+   fi
+   log_debug " | Running user id: $(id --user)"
+   log_debug " | Running group id: $(id --group)"
+   if [ "${debug_logging}" = true ]
+   then
+      log_debug " | Local user: ${user:0:2}********:${user_id}"
+      log_debug " | Local group: ${group:0:2}********:${group_id}"
+   else
+      log_info " | Local user: ${user}:${user_id}"
+      log_info " | Local group: ${group}:${group_id}"
+   fi
+   log_debug " | Force GID: ${force_gid}"
 
-   local icloud_dot_com dns_counter
    if [ "${icloud_china:=false}" = true ]
    then
       icloud_domain="icloud.com.cn"
    else
       icloud_domain="icloud.com"
    fi
-   case "${synchronisation_interval:=86400}" in
-      21600) synchronisation_interval=21600;; # 6 hours
-      43200) synchronisation_interval=43200;; # 12 hours
-      86400) synchronisation_interval=86400;; # 24 hours
-      129600) synchronisation_interval=129600;; # 36 hours
-      172800) synchronisation_interval=172800;; # 48 hours
-      604800) synchronisation_interval=604800;; # 7 days
-      *) synchronisation_interval=86400;; # 24 hours
-   esac
-   if [ "${synchronisation_delay:=0}" -gt 60 ]
-   then
-      synchronisation_delay=60
-   fi
-   log_debug "Running user id: $(id --user)"
-   log_debug "Running group id: $(id --group)"
-   if [ "${debug_logging}" = true ]
-   then
-      log_debug "Local user: ${user:0:2}********:${user_id}"
-      log_debug "Local group: ${group:0:2}********:${group_id}"
-   else
-      log_info "Local user: ${user}:${user_id}"
-      log_info "Local group: ${group}:${group_id}"
-   fi
-   log_debug "Force GID: ${force_gid}"
-   log_debug "LAN IP Address: ${lan_ip}"
-   log_debug "Default gateway: $(ip route | grep default | awk '{print $3}')"
-   log_debug "DNS server: $(grep nameserver /etc/resolv.conf | awk '{print $2}')"
    icloud_dot_com="$(nslookup -type=a ${icloud_domain} | grep -v "127.0.0.1" | grep Address | tail -1 | awk '{print $2}')"
    while [ -z "${icloud_dot_com}" ]
    do
       if [ "${dns_counter:=0}" = 0 ]
       then
-         log_warning "Cannot find ${icloud_domain} IP address - retrying"
+         log_warning " ! Cannot find ${icloud_domain} IP address - retrying"
       fi
       sleep 10
       icloud_dot_com="$(nslookup -type=a ${icloud_domain} | grep -v "127.0.0.1" | grep Address | tail -1 | awk '{print $2}')"
       dns_counter=$((dns_counter+1))
       if [ "${dns_counter}" = 12 ]
       then
-         log_error "Cannot find ${icloud_domain} IP address. Please check your DNS/Firewall settings - exiting"
+         log_error " ! Cannot find ${icloud_domain} IP address. Please check your DNS/Firewall settings - exiting"
          sleep 120
          exit 1
       fi
    done
-   log_debug "IP address for ${icloud_domain}: ${icloud_dot_com}"
-   if [ "${debug_logging}" = true ]
-   then
-      log_info "Debug logging: Enabled"
-      log_level="debug"
-   else
-      log_info "Debug logging: Disabled"
-      log_level="info"
-   fi
-   apple_id_prefix="${apple_id%%@*}"
-   apple_id_suffix="${apple_id##*@}"
-   apple_id_domain="${apple_id_suffix%%.*}"
-   apple_id_tld="${apple_id##*.}"
-   apple_id_censored="${apple_id_prefix:0:1}******${apple_id_prefix:0-1}@${apple_id_domain:0:1}******.${apple_id_tld}"
-   log_info "Apple ID: ${apple_id_censored}"
-   cookie_file_censored="$(echo -n "${apple_id_censored//[^a-z0-9_*]/}")"
-   log_info "Cookie path: /config/${cookie_file_censored}"
-   log_info "Cookie expiry notification period: ${notification_days}"
-   log_info "Download destination directory: ${download_path}"
-   log_info "Folder structure: ${folder_structure}"
-   log_debug "Directory permissions: ${directory_permissions}"
-   log_debug "File permissions: ${file_permissions}"
-   log_info "Keep Unicode: ${keep_unicode}"
-   log_info "Live Photo MOV Filename Policy: ${live_photo_mov_filename_policy}"
-   log_info "File Match Policy: ${file_match_policy}"
-   log_info "Synchronisation interval: ${synchronisation_interval}"
-   log_info "Synchronisation delay (minutes): ${synchronisation_delay}"
-   log_info "Set EXIF date/time: ${set_exif_datetime}"
-   log_info "Auto delete: ${auto_delete}"
-   log_info "Delete after download: ${delete_after_download}"
-   if [ "${keep_icloud_recent_only}" = true ]
-   then
-      log_info "Keep iCloud recent : Enabled"
-      log_info "Keep iCloud recent days: ${keep_icloud_recent_days}"
-   fi
-   log_info "Delete empty directories: ${delete_empty_directories}"
-   log_info "Photo size: ${photo_size}"
-   log_info "Align RAW: ${align_raw}"
-   log_info "Single pass mode: ${single_pass}"
-   if [ "${single_pass}" = true ]
-   then
-      log_debug "Single pass mode enabled. Disabling download check"
-      skip_check=true
-   fi
-   log_info "Skip download check: ${skip_check}"
-   log_info "Skip live photos: ${skip_live_photos}"
-   if [ "${recent_only}" ]
-   then
-      log_info "Number of most recently added photos to download: ${recent_only}"
-   else
-      log_info "Number of most recently added photos to download: Download All Photos"
-   fi
-   if [ "${photo_album}" ]
-   then
-      log_info "Downloading photos from album(s): ${photo_album}"
-   elif [ "${photo_library}" ]
-   then
-      log_info "Downloading photos from library: ${photo_library}"
-   else
-      log_info "Downloading photos from: Download All Photos"
-   fi
-   if [ "${until_found}" ]
-   then
-      log_info "Stop downloading when prexisiting files count is: ${until_found}"
-   else
-      log_info "Stop downloading when prexisiting files count is: Download All Photos"
-   fi
-   if [ "${skip_live_photos}" = false ]
-   then
-      log_info "Live photo size: ${live_photo_size}"
-   fi
-   log_info "Skip videos: ${skip_videos}"
-   log_info "Convert HEIC to JPEG: ${convert_heic_to_jpeg}"
-   if [ "${convert_heic_to_jpeg}" = true ]
-   then
-      log_debug "JPEG conversion quality: ${jpeg_quality}"
-   fi
-   if [ "${jpeg_path}" ]
-   then
-      log_info "Converted JPEGs path: ${jpeg_path}"
-   fi
-   if [ "${sideways_copy_videos}" = true ]
-   then
-      log_debug "Sideways copy videos mode: ${sideways_copy_videos_mode}"
-   fi
-   if [ "${video_path}" ]
-   then
-      log_info "Sideways copied videos path: ${video_path}"
-   fi
-   if [ "${delete_accompanying}" = true ]
-   then
-      log_info "Delete accompanying files (.JPG/.HEIC.MOV)"
-   fi
-   if [ "${notification_type}" ]
-   then
-      configure_notifications
-   fi
-   log_info "Downloading from: ${icloud_domain}"
+   log_debug " | IP address for ${icloud_domain}: ${icloud_dot_com}"
    if [ "${icloud_china}" = true ]
    then
       if [ "${auth_china}" = true ]
@@ -173,37 +78,120 @@ initialise_script()
          auth_domain="cn"
       fi
    fi
+   log_info " | Authentication domain: ${auth_domain:=com}"
+   log_info " | Downloading from: ${icloud_domain}"
+   log_info " | Cookie expiry notification period: ${notification_days}"
+   log_info " | Download destination directory: ${download_path}"
+   log_info " | Folder structure: ${folder_structure}"
+   log_debug " | Directory permissions: ${directory_permissions}"
+   log_debug " | File permissions: ${file_permissions}"
+   log_info " | Keep Unicode: ${keep_unicode}"
+   log_info " | Live Photo MOV Filename Policy: ${live_photo_mov_filename_policy}"
+   log_info " | File Match Policy: ${file_match_policy}"
+   log_info " | Download interval: ${download_interval}"
+   log_info " | Download delay (minutes): ${download_delay}"
+   log_info " | Set EXIF date/time: ${set_exif_datetime}"
+   log_info " | Auto delete: ${auto_delete}"
+   log_info " | Delete after download: ${delete_after_download}"
+   if [ "${keep_icloud_recent_only}" = true ]
+   then
+      log_info " | Keep iCloud recent : Enabled"
+      log_info " | Keep iCloud recent days: ${keep_icloud_recent_days}"
+   fi
+   log_info " | Delete empty directories: ${delete_empty_directories}"
+   log_info " | Photo size: ${photo_size}"
+   log_info " | Align RAW: ${align_raw}"
+   log_info " | Single pass mode: ${single_pass}"
+   if [ "${single_pass}" = true ]
+   then
+      log_debug " | Single pass mode enabled. Disabling download check"
+      skip_check=true
+   fi
+   log_info " | Skip download check: ${skip_check}"
+   log_info " | Skip live photos: ${skip_live_photos}"
+   if [ "${recent_only}" ]
+   then
+      log_info " | Number of most recently added photos to download: ${recent_only}"
+   else
+      log_info " | Number of most recently added photos to download: Download All Photos"
+   fi
+   if [ "${photo_album}" ]
+   then
+      log_info " | Downloading photos from album(s): ${photo_album}"
+   elif [ "${photo_library}" ]
+   then
+      log_info " | Downloading photos from library: ${photo_library}"
+   else
+      log_info " | Downloading photos from: Download All Photos"
+   fi
+   if [ "${until_found}" ]
+   then
+      log_info " | Stop downloading when prexisiting files count is: ${until_found}"
+   else
+      log_info " | Stop downloading when prexisiting files count is: Download All Photos"
+   fi
+   if [ "${skip_live_photos}" = false ]
+   then
+      log_info " | Live photo size: ${live_photo_size}"
+   fi
+   log_info " | Skip videos: ${skip_videos}"
+   log_info " | Convert HEIC to JPEG: ${convert_heic_to_jpeg}"
+   if [ "${convert_heic_to_jpeg}" = true ]
+   then
+      log_debug " | JPEG conversion quality: ${jpeg_quality}"
+   fi
+   if [ "${jpeg_path}" ]
+   then
+      log_info " | Converted JPEGs path: ${jpeg_path}"
+   fi
+   if [ "${sideways_copy_videos}" = true ]
+   then
+      log_debug " | Sideways copy videos mode: ${sideways_copy_videos_mode}"
+   fi
+   if [ "${video_path}" ]
+   then
+      log_info " | Sideways copied videos path: ${video_path}"
+   fi
+   if [ "${delete_accompanying}" = true ]
+   then
+      log_info " | Delete accompanying files (.JPG/_HEVC.MOV)"
+   fi
    if [ "${fake_user_agent}" = true ]
    then
-      log_info "User agent impersonation for curl: Enabled"
+      log_info " | User agent impersonation for curl: Enabled"
       curl_user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edge/122.0.0.0"
    else
-      log_debug "User agent impersonation for curl: Disabled"
+      log_debug " | User agent impersonation for curl: Disabled"
    fi
-   log_info "Authentication domain: ${auth_domain:=com}"
    if [ "${nextcloud_upload}" = true ]
    then
-      log_info "Nextcloud upload: Enabled"
+      log_info " | Nextcloud upload: Enabled"
       nextcloud_url_scheme="${nextcloud_url%//*}//"
       nextcloud_url_suffix="${nextcloud_url##*//}"
       nextcloud_url_domain="${nextcloud_url_suffix%%/*}"
       nextcloud_url_tld="${nextcloud_url_domain#*.}"
       nextcloud_url_webroot="${nextcloud_url_suffix#*/}"
-      nextcloud_url_censored="${nextcloud_url_domain:0:1}********.${nextcloud_url_tld}/${nextcloud_url_webroot%/}${nextcloud_target_dir%/}/"
+      nextcloud_url_censored="${nextcloud_url_domain:0:1}********.${nextcloud_url_tld}/${nextcloud_url_webroot}/${nextcloud_target_dir}/"
       nextcloud_url_censored="${nextcloud_url_censored//\/\///}"
-      log_debug "Nextcloud username: ${nextcloud_username:0:1}********${nextcloud_username:0-1}"
-      log_debug "Nextcloud target directory: ${nextcloud_target_dir}"
-      log_debug "Nextcloud destination URL: ${nextcloud_url_scheme}${nextcloud_url_censored}"
+      log_debug " | Nextcloud username: ${nextcloud_username:0:1}********${nextcloud_username:0-1}"
+      log_debug " | Nextcloud target directory: ${nextcloud_target_dir}"
+      log_debug " | Nextcloud destination URL: ${nextcloud_url_scheme}${nextcloud_url_censored}"
    else
-      log_debug "Nextcloud upload: Disabled"
+      log_debug " | Nextcloud upload: Disabled"
    fi
    if [ "${synology_ignore_path}" = true ]
    then
-      log_info "Ignore Synology extended attribute directories: Enabled"
+      log_info " | Ignore Synology extended attribute directories: Enabled"
       ignore_path="*/@eaDir*"
    else
-      log_debug "Ignore Synology extended attribute directories: Disabled"
+      log_debug " | Ignore Synology extended attribute directories: Disabled"
       ignore_path=""
+   fi
+   log_info "Finished loading configuration file"
+
+   if [ "${notification_type}" ]
+   then
+      configure_notifications
    fi
 
    source /opt/icloudpd/bin/activate
@@ -253,234 +241,247 @@ clean_notification_title()
    if [ "${notification_title}" ]
    then
       notification_title="${notification_title//[^a-zA-Z0-9_ ]/}"
-      log_debug "Cleaned notification title: ${notification_title}"
+      log_debug " | Cleaned notification title: ${notification_title}"
    else
-      log_debug "Notification title: ${notification_title:=boredazfcuk/iCloudPD}"
+      log_debug " | Notification title: ${notification_title:=boredazfcuk/iCloudPD}"
    fi
 }
 
 configure_notifications()
 {
-   if [ -z "${prowl_api_key}" ] && [ -z "${pushover_token}" ] && [ -z "${telegram_token}" ] && [ -z "${webhook_id}" ] && [ -z "${dingtalk_token}" ] && [ -z "${discord_token}" ] && [ -z "${iyuu_token}" ] && [ -z "${wecom_secret}" ] && [ -z "${gotify_app_token}" ] && [ -z "${bark_device_key}" ] && [ -z "${msmtp_pass}" ]
+   log_info "Configuring notifications"
+   notification_type_tc="$(echo ${notification_type} | cut -c 1 | tr '[:lower:]' '[:upper:]')$(echo ${notification_type} | cut -c2-)"
+   if [ "${notification_type}" = "prowl" ] && [ "${prowl_api_key}" ]
    then
-      log_warning "${notification_type} notifications enabled, but API key/token/secret not set - disabling notifications"
-      unset notification_type
-   else
-      if [ "${notification_type}" = "Prowl" ] && [ "${prowl_api_key}" ]
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} api key: ${prowl_api_key:0:2}********${prowl_api_key:0-2}"
+      notification_url="https://api.prowlapp.com/publicapi/add"
+      log_debug "   - ${notification_type_tc} notification URL: ${notification_url}"
+      clean_notification_title
+   elif [ "${notification_type}" = "pushover" ] && [ "${pushover_user}" ] && [ "${pushover_token}" ]
+   then
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} user: ${pushover_user:0:2}********${pushover_user:0-2}"
+      log_debug "   - ${notification_type_tc} token: ${pushover_token:0:2}********${pushover_token:0-2}"
+      if [ "${pushover_sound}" ]
       then
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         log_debug "${notification_type} api key: ${prowl_api_key:0:2}********${prowl_api_key:0-2}"
-         notification_url="https://api.prowlapp.com/publicapi/add"
-         log_debug "${notification_type} notification URL: ${notification_url}"
-      elif [ "${notification_type}" = "Pushover" ] && [ "${pushover_user}" ] && [ "${pushover_token}" ]
+         case "${pushover_sound}" in
+            pushover|bike|bugle|cashregister|classical|cosmic|falling|gamelan|incoming|intermission|magic|mechanical|pianobar|siren|spacealarm|tugboat|alien|climb|persistent|echo|updown|vibrate|none)
+               log_debug "   - ${notification_type_tc} sound: ${pushover_sound}"
+            ;;
+            *)
+               log_debug "   - ${notification_type_tc} sound not recognised. Using default"
+               unset pushover_sound
+         esac
+      fi
+      notification_url="https://api.pushover.net/1/messages.json"
+      log_debug "   - ${notification_type_tc} notification URL: ${notification_url}"
+      clean_notification_title
+   elif [ "${notification_type}" = "telegram" ] && [ "${telegram_token}" ] && [ "${telegram_chat_id}" ]
+   then
+      if [ "${telegram_http}" = true ]
       then
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         log_debug "${notification_type} user: ${pushover_user:0:2}********${pushover_user:0-2}"
-         log_debug "${notification_type} token: ${pushover_token:0:2}********${pushover_token:0-2}"
-         if [ "${pushover_sound}" ]
-         then
-            case "${pushover_sound}" in
-               pushover|bike|bugle|cashregister|classical|cosmic|falling|gamelan|incoming|intermission|magic|mechanical|pianobar|siren|spacealarm|tugboat|alien|climb|persistent|echo|updown|vibrate|none)
-                  log_debug "${notification_type} sound: ${pushover_sound}"
-               ;;
-               *)
-                  log_debug "${notification_type} sound not recognised. Using default"
-                  unset pushover_sound
-            esac
-         fi
-         notification_url="https://api.pushover.net/1/messages.json"
-         log_debug "${notification_type} notification URL: ${notification_url}"
-      elif [ "${notification_type}" = "Telegram" ] && [ "${telegram_token}" ] && [ "${telegram_chat_id}" ]
+         telegram_protocol="http"
+      else
+         telegram_protocol="https"
+      fi
+      if [ "${telegram_server}" ]
       then
-         if [ "${telegram_http}" = true ]
-         then
-            telegram_protocol="http"
-         else
-            telegram_protocol="https"
-         fi
-         if [ "${telegram_server}" ]
-         then
-            telegram_base_url="${telegram_protocol}://${telegram_server}/bot${telegram_token}"
-         else
-            telegram_base_url="${telegram_protocol}://api.telegram.org/bot${telegram_token}"
-         fi
-         notification_url="${telegram_base_url}/sendMessage"
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         log_debug "${notification_type} token: ${telegram_token:0:2}********${telegram_token:0-2}"
-         log_debug "${notification_type} chat id: ${telegram_chat_id:0:2}********${telegram_chat_id:0-2}"
-         log_debug "${notification_type} polling: ${telegram_polling}"
-         log_debug "${notification_type} uses HTTP: ${telegram_http}"
-         if [ "${telegram_server}" ]
-         then
-            log_debug "${notification_type} base URL: ${telegram_protocol}://${telegram_server}/bot${telegram_token:0:2}********${telegram_token:0-2}"
-         else
-            log_debug "${notification_type} base URL: ${telegram_protocol}://api.telegram.org/bot${telegram_token:0:2}********${telegram_token:0-2}"
+         telegram_base_url="${telegram_protocol}://${telegram_server}/bot${telegram_token}"
+      else
+         telegram_base_url="${telegram_protocol}://api.telegram.org/bot${telegram_token}"
+      fi
+      notification_url="${telegram_base_url}/sendMessage"
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} token: ${telegram_token:0:2}********${telegram_token:0-2}"
+      log_debug "   - ${notification_type_tc} chat id: ${telegram_chat_id:0:2}********${telegram_chat_id:0-2}"
+      log_debug "   - ${notification_type_tc} polling: ${telegram_polling}"
+      log_debug "   - ${notification_type_tc} uses HTTP: ${telegram_http}"
+      if [ "${telegram_server}" ]
+      then
+         log_debug "   - ${notification_type_tc} base URL: ${telegram_protocol}://${telegram_server}/bot${telegram_token:0:2}********${telegram_token:0-2}"
+      else
+         log_debug "   - ${notification_type_tc} base URL: ${telegram_protocol}://api.telegram.org/bot${telegram_token:0:2}********${telegram_token:0-2}"
 
-         fi
-         ##################
-         log_debug "${notification_type} notification URL: ${telegram_protocol}://api.telegram.org/bot${telegram_token:0:2}********${telegram_token:0-2}/sendMessage"
-         if [ "${script_launch_parameters}" ]
+      fi
+      log_debug "   - ${notification_type_tc} notification URL: ${telegram_protocol}://api.telegram.org/bot${telegram_token:0:2}********${telegram_token:0-2}/sendMessage"
+      if [ "${script_launch_parameters}" ]
+      then
+         telegram_polling="false"
+      fi
+      if [ "${telegram_polling}" = true ]
+      then
+         if [ "${telegram_bot_initialised}" = true ]
          then
-            telegram_polling="false"
-         fi
-         if [ "${telegram_polling}" = true ]
-         then
-            if [ "$(cat /tmp/icloudpd/bot_check)" = true ]
+            if [ "${telegram_server}" ]
             then
-               if [ "${telegram_server}" ]
-               then
-                  log_debug "Checking ${telegram_server} for updates"
-               else
-                  log_debug "Checking api.telegram.org for updates"
-               fi
-               telegram_update_id_offset_file="/config/telegram_update_id.num"
-               telegram_update_id_offset="$(head -1 ${telegram_update_id_offset_file})"
-               log_info "Latest update id: ${telegram_update_id_offset}"
+               log_debug "   - Checking ${telegram_server} for updates"
             else
-               telegram_polling=false
+               log_debug "   - Checking api.telegram.org for updates"
             fi
-         fi
-         if [ "${telegram_silent_file_notifications}" ]
-         then
-            telegram_silent_file_notifications=true
-         fi
-         log_debug "${notification_type} silent file notifications: ${telegram_silent_file_notifications:=false}"
-      elif [ "${notification_type}" = "openhab" ] && [ "${webhook_server}" ] && [ "${webhook_id}" ]
-      then
-         if [ "${webhook_https}" = true ]
-         then
-            webhook_scheme="https"
+            telegram_update_id_offset_file="/config/telegram_update_id.num"
+            if [ ! -f "${telegram_update_id_offset_file}" ]
+            then
+               echo -n 0 > "${telegram_update_id_offset_file}"
+            fi
+            telegram_update_id_offset="$(head -1 ${telegram_update_id_offset_file})"
+            log_info "   - Latest update id: ${telegram_update_id_offset}"
          else
-            webhook_scheme="http"
+            telegram_polling=false
          fi
-         log_info "${notification_type} notifications enabled"
-         notification_url="${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id}"
-         log_debug "${notification_type} server: ${webhook_server}"
-         log_debug "${notification_type} port: ${webhook_port:=8123}"
-         log_debug "${notification_type} path: ${webhook_path:=/rest/items/}"
-         log_debug "${notification_type} ID: ${webhook_id:0:2}********${webhook_id:0-2}"
-         log_debug "${notification_type} notification URL: ${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id:0:2}********${webhook_id:0-2}"
-      elif [ "${notification_type}" = "Webhook" ] && [ "${webhook_server}" ] && [ "${webhook_id}" ]
-      then
-         if [ "${webhook_https}" = true ]
-         then
-            webhook_scheme="https"
-         else
-            webhook_scheme="http"
-         fi
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         notification_url="${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id}"
-         log_debug "${notification_type} server: ${webhook_server}"
-         log_debug "${notification_type} port: ${webhook_port:=8123}"
-         log_debug "${notification_type} path: ${webhook_path:=/api/webhook/}"
-         log_debug "${notification_type} ID: ${webhook_id:0:2}********${webhook_id:0-2}"
-         log_debug "${notification_type} notification URL: ${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id:0:2}********${webhook_id:0-2}"
-         log_debug "${notification_type} body keyword: ${webhook_body:=data}"
-         if [ "${webhook_insecure}" ] &&  [ "${debug_logging}" = true ]
-         then
-            log_debug "${notification_type} insecure certificates allowed"
-         fi
-      elif [ "${notification_type}" = "Discord" ] && [ "${discord_id}" ] && [ "${discord_token}" ]
-      then
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         notification_url="https://discord.com/api/webhooks/${discord_id}/${discord_token}"
-         log_debug "${notification_type} Discord ID: ${discord_id:0:2}********${discord_id:0-2}"
-         log_debug "${notification_type} Discord token: ${discord_token:0:2}********${discord_token:0-2}"
-         log_debug "${notification_type} notification URL: https://discord.com/api/webhooks/${discord_id:0:2}********${discord_id:0-2}/${discord_token:0:2}********${discord_token:0-2}"
-      elif [ "${notification_type}" = "Dingtalk" ] && [ "${dingtalk_token}" ]
-      then
-         notification_url="https://oapi.dingtalk.com/robot/send?access_token=${dingtalk_token}"
-         log_info "${notification_type} notifications enabled"
-         log_debug "${notification_type} token: ${dingtalk_token:0:2}********${dingtalk_token:0-2}"
-         log_debug "${notification_type} notification URL: https://oapi.dingtalk.com/robot/send?access_token=${dingtalk_token:0:2}********${dingtalk_token:0-2}"
-      elif [ "${notification_type}" = "IYUU" ] && [ "${iyuu_token}" ]
-      then
-         notification_url="http://iyuu.cn/${iyuu_token}.send?"
-         log_info "${notification_type} notifications enabled"
-         log_debug "${notification_type} token: ${iyuu_token}"
-         log_debug "${notification_type} notification URL: http://iyuu.cn/${iyuu_token:0:2}********${iyuu_token:0-2}.send?"
-      elif [ "${notification_type}" = "WeCom" ] && [ "${wecom_id}" ] && [ "${wecom_secret}" ]
-      then
-         wecom_base_url="https://qyapi.weixin.qq.com"
-         if [ "${wecom_proxy}" ]
-         then
-            wecom_base_url="${wecom_proxy}"
-            log_debug "${notification_type} notifications proxy enabled : ${wecom_proxy}"
-         fi
-         wecom_token_url="${wecom_base_url}/cgi-bin/gettoken?corpid=${wecom_id}&corpsecret=${wecom_secret}"
-         if [ "${fake_user_agent}" = true ]
-         then
-            wecom_token="$(/usr/bin/curl --silent --user-agent "${curl_user_agent}" --get "${wecom_token_url}" | awk -F\" '{print $10}')"
-         else
-            wecom_token="$(/usr/bin/curl --silent --get "${wecom_token_url}" | awk -F\" '{print $10}')"
-         fi
-         wecom_token_expiry="$(date --date='2 hour')"
-         notification_url="${wecom_base_url}/cgi-bin/message/send?access_token=${wecom_token}"
-         log_info "${notification_type} notifications enabled"
-         log_debug "${notification_type} token: ${wecom_token:0:2}********${wecom_token:0-2}"
-         log_debug "${notification_type} token expiry time: $(date -d "${wecom_token_expiry}")"
-         log_debug "${notification_type} notification URL: ${wecom_base_url}/cgi-bin/message/send?access_token=${wecom_token:0:2}********${wecom_token:0-2}"
-      elif [ "${notification_type}" = "Gotify" ] && [ "${gotify_app_token}" ] && [ "${gotify_server_url}" ]
-      then
-      if [ "${gotify_https}" = true ]
-      then
-            gotify_scheme="https"
-         else
-            gotify_scheme="http"
-         fi
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         notification_url="${gotify_scheme}://${gotify_server_url}/message?token=${gotify_app_token}"
-         log_debug "${notification_type} token: ${gotify_app_token:0:2}********${gotify_app_token:0-2}"
-         log_debug "${notification_type} server URL: ${gotify_scheme}://${gotify_server_url}"
-         log_debug "${notification_type} notification URL: ${gotify_scheme}://${gotify_server_url}/message?token=${gotify_app_token:0:2}********${gotify_app_token:0-2}"
-      elif [ "${notification_type}" = "Bark" ] && [ "${bark_device_key}" ] && [ "${bark_server}" ]
-      then
-         log_info "${notification_type} notifications enabled"
-         clean_notification_title
-         notification_url="http://${bark_server}/push"
-         log_debug "${notification_type} device key: ${bark_device_key:0:2}********${bark_device_key:0-2}"
-         log_debug "${notification_type} server: ${bark_server}"
-         log_debug "${notification_type} notification URL: http://${bark_server}/push"
-      elif [ "${notification_type}" = "msmtp" ] && [ "${msmtp_host}" ] && [ "${msmtp_port}" ] && [ "${msmtp_user}" ] && [ "${msmtp_pass}" ]
-      then
-         log_info "${notification_type} notifications enabled"
-      else
-         log_warning "${notification_type} notifications enabled, but configured incorrectly - disabling notifications"
-         unset notification_type prowl_api_key pushover_user pushover_token telegram_token telegram_chat_id webhook_scheme webhook_server webhook_port webhook_id dingtalk_token discord_id discord_token iyuu_token wecom_id wecom_secret gotify_app_token gotify_scheme gotify_server_url bark_device_key bark_server
       fi
+      log_debug "   - Silent file notifications: ${silent_file_notifications}"
+      clean_notification_title
+   elif [ "${notification_type}" = "openhab" ] && [ "${webhook_server}" ] && [ "${webhook_id}" ]
+   then
+      if [ "${webhook_https}" = true ]
+      then
+         webhook_scheme="https"
+      else
+         webhook_scheme="http"
+      fi
+      log_info " | ${notification_type_tc} notifications enabled"
+      notification_url="${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id}"
+      log_debug "   - ${notification_type_tc} server: ${webhook_server}"
+      log_debug "   - ${notification_type_tc} port: ${webhook_port:=8123}"
+      log_debug "   - ${notification_type_tc} path: ${webhook_path:=/rest/items/}"
+      log_debug "   - ${notification_type_tc} ID: ${webhook_id:0:2}********${webhook_id:0-2}"
+      log_debug "   - ${notification_type_tc} notification URL: ${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id:0:2}********${webhook_id:0-2}"
+   elif [ "${notification_type}" = "webhook" ] && [ "${webhook_server}" ] && [ "${webhook_id}" ]
+   then
+      if [ "${webhook_https}" = true ]
+      then
+         webhook_scheme="https"
+      else
+         webhook_scheme="http"
+      fi
+      log_info " | ${notification_type_tc} notifications enabled"
+      notification_url="${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id}"
+      log_debug "   - ${notification_type_tc} server: ${webhook_server}"
+      log_debug "   - ${notification_type_tc} port: ${webhook_port:=8123}"
+      log_debug "   - ${notification_type_tc} path: ${webhook_path:=/api/webhook/}"
+      log_debug "   - ${notification_type_tc} ID: ${webhook_id:0:2}********${webhook_id:0-2}"
+      log_debug "   - ${notification_type_tc} notification URL: ${webhook_scheme}://${webhook_server}:${webhook_port}${webhook_path}${webhook_id:0:2}********${webhook_id:0-2}"
+      log_debug "   - ${notification_type_tc} body keyword: ${webhook_body:=data}"
+      if [ "${webhook_insecure}" ] &&  [ "${debug_logging}" = true ]
+      then
+         log_debug "   - ${notification_type_tc} insecure certificates allowed"
+      fi
+      clean_notification_title
+   elif [ "${notification_type}" = "discord" ] && [ "${discord_id}" ] && [ "${discord_token}" ]
+   then
+      log_info " | ${notification_type_tc} notifications enabled"
+      notification_url="https://discord.com/api/webhooks/${discord_id}/${discord_token}"
+      log_debug "   - ${notification_type_tc} Discord ID: ${discord_id:0:2}********${discord_id:0-2}"
+      log_debug "   - ${notification_type_tc} Discord token: ${discord_token:0:2}********${discord_token:0-2}"
+      log_debug "   - ${notification_type_tc} notification URL: https://discord.com/api/webhooks/${discord_id:0:2}********${discord_id:0-2}/${discord_token:0:2}********${discord_token:0-2}"
+      clean_notification_title
+   elif [ "${notification_type}" = "dingtalk" ] && [ "${dingtalk_token}" ]
+   then
+      notification_url="https://oapi.dingtalk.com/robot/send?access_token=${dingtalk_token}"
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} token: ${dingtalk_token:0:2}********${dingtalk_token:0-2}"
+      log_debug "   - ${notification_type_tc} notification URL: https://oapi.dingtalk.com/robot/send?access_token=${dingtalk_token:0:2}********${dingtalk_token:0-2}"
+   elif [ "${notification_type}" = "iyuu" ] && [ "${iyuu_token}" ]
+   then
+      notification_url="http://iyuu.cn/${iyuu_token}.send?"
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} token: ${iyuu_token}"
+      log_debug "   - ${notification_type_tc} notification URL: http://iyuu.cn/${iyuu_token:0:2}********${iyuu_token:0-2}.send?"
+   elif [ "${notification_type}" = "wecom" ] && [ "${wecom_id}" ] && [ "${wecom_secret}" ]
+   then
+      wecom_base_url="https://qyapi.weixin.qq.com"
+      if [ "${wecom_proxy}" ]
+      then
+         wecom_base_url="${wecom_proxy}"
+         log_debug "   - ${notification_type_tc} notifications proxy enabled : ${wecom_proxy}"
+      fi
+      wecom_token_url="${wecom_base_url}/cgi-bin/gettoken?corpid=${wecom_id}&corpsecret=${wecom_secret}"
+      if [ "${fake_user_agent}" = true ]
+      then
+         wecom_token="$(/usr/bin/curl --silent --user-agent "${curl_user_agent}" --get "${wecom_token_url}" | awk -F\" '{print $10}')"
+      else
+         wecom_token="$(/usr/bin/curl --silent --get "${wecom_token_url}" | awk -F\" '{print $10}')"
+      fi
+      wecom_token_expiry="$(date --date='2 hour')"
+      notification_url="${wecom_base_url}/cgi-bin/message/send?access_token=${wecom_token}"
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} token: ${wecom_token:0:2}********${wecom_token:0-2}"
+      log_debug "   - ${notification_type_tc} token expiry time: $(date -d "${wecom_token_expiry}")"
+      log_debug "   - ${notification_type_tc} notification URL: ${wecom_base_url}/cgi-bin/message/send?access_token=${wecom_token:0:2}********${wecom_token:0-2}"
+   elif [ "${notification_type}" = "gotify" ] && [ "${gotify_app_token}" ] && [ "${gotify_server_url}" ]
+   then
+   if [ "${gotify_https}" = true ]
+   then
+         gotify_scheme="https"
+      else
+         gotify_scheme="http"
+      fi
+      log_info " | ${notification_type_tc} notifications enabled"
+      notification_url="${gotify_scheme}://${gotify_server_url}/message?token=${gotify_app_token}"
+      log_debug "   - ${notification_type_tc} token: ${gotify_app_token:0:2}********${gotify_app_token:0-2}"
+      log_debug "   - ${notification_type_tc} server URL: ${gotify_scheme}://${gotify_server_url}"
+      log_debug "   - ${notification_type_tc} notification URL: ${gotify_scheme}://${gotify_server_url}/message?token=${gotify_app_token:0:2}********${gotify_app_token:0-2}"
+      clean_notification_title
+   elif [ "${notification_type}" = "bark" ] && [ "${bark_device_key}" ] && [ "${bark_server}" ]
+   then
+      log_info " | ${notification_type_tc} notifications enabled"
+      notification_url="http://${bark_server}/push"
+      log_debug "   - ${notification_type_tc} device key: ${bark_device_key:0:2}********${bark_device_key:0-2}"
+      log_debug "   - ${notification_type_tc} server: ${bark_server}"
+      log_debug "   - ${notification_type_tc} notification URL: http://${bark_server}/push"
+      clean_notification_title
+   elif [ "${notification_type}" = "msmtp" ] && [ "${msmtp_host}" ] && [ "${msmtp_port}" ]
+   then
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} hostname: ${msmtp_host}"
+      log_debug "   - ${notification_type_tc} port number: ${msmtp_port}"
+      if  [ "${msmtp_user}" ] && [ "${msmtp_pass}" ]
+      then
+         log_debug "   - ${notification_type_tc} username: ${msmtp_user}"
+         log_debug "   - ${notification_type_tc} password: ${msmtp_pass:0:2}********${msmtp_pass:0-2}"
+      fi
+   elif [ "${notification_type}" = "signal" ] && [ "${signal_host}" ] && [ "${signal_port}" ] && [ "${signal_number}" ] && [ "${signal_recipient}" ]
+   then
+      log_info " | ${notification_type_tc} notifications enabled"
+      log_debug "   - ${notification_type_tc} hostname: ${signal_host}"
+      log_debug "   - ${notification_type_tc} port number: ${signal_port}"
+      log_debug "   - ${notification_type_tc} number: ${signal_number}"
+      log_debug "   - ${notification_type_tc} recipient: ${signal_recipient}"
+   else
+      log_warning " ! ${notification_type_tc} notifications enabled, but configured incorrectly - disabling notifications"
+      unset notification_type prowl_api_key pushover_user pushover_token telegram_token telegram_chat_id webhook_scheme webhook_server webhook_port webhook_id dingtalk_token discord_id discord_token iyuu_token wecom_id wecom_secret gotify_app_token gotify_scheme gotify_server_url bark_device_key bark_server
+   fi
+   if [ "${startup_notification}" = true ]
+   then
+      log_debug " | Startup notification: Enabled"
+   else
+      log_debug " | Startup notification: Disabled"
+   fi
 
-      if [ "${startup_notification}" = true ]
-      then
-         log_debug "Startup notification: Enabled"
-         if [ "${icloud_china}" = false ]
-         then
-            send_notification "startup" "iCloudPD container started" "0" "iCloudPD container starting for Apple ID: ${apple_id}"
-         else
-            send_notification "startup" "iCloudPD container started" "0" "启动成功，开始同步当前 Apple ID 中的照片" "" "" "" "开始同步 ${name} 的 iCloud 图库" "Apple ID: ${apple_id}"
-         fi
-      else
-         log_debug "Startup notification: Disabled"
-      fi
+   if [ "${download_notifications}" = true ]
+   then
+      log_debug " | Download notifications: Enabled"
+   else
+      log_debug " | Download notifications: Disabled"
+      unset download_notifications
+   fi
+   if [ "${delete_notifications}" = true ]
+   then
+      log_debug " | Delete notifications: Enabled"
+   else
+      log_debug " | Delete notifications: Disabled"
+      unset delete_notifications
+   fi
+   log_info "Configuring of notifications complete"
 
-      if [ "${download_notifications}" = true ]
+   if [ "${startup_notification}" = true ]
+   then
+      if [ "${icloud_china}" = false ]
       then
-         log_debug "Download notifications: Enabled"
+         send_notification "startup" "iCloudPD container started" "0" "iCloudPD container starting for Apple ID: ${apple_id}"
       else
-         log_debug "Download notifications: Disabled"
-         unset download_notifications
-      fi
-      if [ "${delete_notifications}" = true ]
-      then
-         log_debug "Delete notifications: Enabled"
-      else
-         log_debug "Delete notifications: Disabled"
-         unset delete_notifications
+         send_notification "startup" "iCloudPD container started" "0" "启动成功，开始同步当前 Apple ID 中的照片" "" "" "" "开始同步 ${name} 的 iCloud 图库" "Apple ID: ${apple_id}"
       fi
    fi
 }
@@ -504,7 +505,7 @@ list_libraries()
    do
       log_info " - ${library}"
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 list_albums()
@@ -526,7 +527,7 @@ list_albums()
    do
       log_info " - ${photo_album}"
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 delete_password()
@@ -610,11 +611,11 @@ generate_cookie()
    then
       if [ "$(grep -c "X-APPLE-WEBAUTH-HSA-TRUST" "/config/${cookie_file}")" -eq 1 ]
       then
-         log_info "Multifactor authentication cookie generated. Sync should now be successful"
+         log_info "Multi-factor authentication cookie generated. Sync should now be successful"
       else
-         log_error "Multifactor authentication information missing from cookie. Authentication has failed"
+         log_error "Multi-factor authentication information missing from cookie. Authentication has failed"
          log_error " - Was the correct password entered?"
-         log_error " - Was the multifactor authentication code mistyped?"
+         log_error " - Was the multi-factor authentication code mistyped?"
          log_error " - Can you log into ${icloud_domain} without receiving pop-up notifications?"
          if [ "${icloud_china}" = true ]
          then
@@ -646,34 +647,6 @@ check_mount()
       fi
    done
    log_info "Failsafe file ${download_path}/.mounted exists, continuing"
-}
-
-check_permissions()
-{
-   if [ "$(run_as "${user}" "if ! test -w \"${download_path}\"; then echo false; fi")" = false ]
-   then
-      log_warning "User ${user}:${user_id} cannot write to directory: ${download_path} - Attempting to set permissions"
-      # set_owner_and_permissions_downloads
-      if [ "$(run_as "${user}" "if ! test -w \"${download_path}\"; then echo false; fi")" = false ]
-      then
-         log_error "User ${user}:${user_id} still cannot write to directory: ${download_path}"
-         log_error " - Fixing permissions failed - Cannot continue, exiting"
-         sleep 120
-         exit 1
-      fi
-   fi
-   if [ "$(run_as "${user}" "if ! test -w \"${jpeg_path}\"; then echo false; fi")" = false ]
-   then
-      log_warning "User ${user}:${user_id} cannot write to directory: ${jpeg_path} - Attempting to set permissions"
-      # set_owner_and_permissions_downloads
-      if [ "$(run_as "${user}" "if ! test -w \"${jpeg_path}\"; then echo false; fi")" = false ]
-      then
-         log_error "User ${user}:${user_id} still cannot write to directory: ${jpeg_path}"
-         log_error " - Fixing permissions failed - Cannot continue, exiting"
-         sleep 120
-         exit 1
-      fi
-   fi
 }
 
 check_keyring_exists()
@@ -759,17 +732,17 @@ check_multifactor_authentication_cookie()
 {
    if [ -f "/config/${cookie_file}" ]
    then
-      log_debug "Multifactor authentication cookie exists"
+      log_debug "Multi-factor authentication cookie exists"
    else
-      log_error "Multifactor authentication cookie does not exist"
+      log_error "Multi-factor authentication cookie does not exist"
       wait_for_cookie DisplayMessage
-      log_debug "Multifactor authentication cookie file exists, checking validity..."
+      log_debug "Multi-factor authentication cookie file exists, checking validity..."
    fi
    if [ "$(grep -c "X-APPLE-DS-WEB-SESSION-TOKEN" "/config/${cookie_file}")" -eq 1 ] && [ "$(grep -c "X-APPLE-WEBAUTH-HSA-TRUST" "/config/${cookie_file}")" -eq 0 ]
    then
-      log_debug "Multifactor authentication cookie exists, but not autenticated. Waiting for authentication to complete..."
+      log_debug "Multi-factor authentication cookie exists, but not authenticated. Waiting for authentication to complete..."
       wait_for_authentication
-      log_debug "Multifactor authentication authentication complete, checking expiry date..."
+      log_debug "Multi-factor authentication authentication complete, checking expiry date..."
    fi
    if [ "$(grep -c "X-APPLE-WEBAUTH-USER" "/config/${cookie_file}")" -eq 1 ]
    then
@@ -780,7 +753,7 @@ check_multifactor_authentication_cookie()
       if [ "${days_remaining}" -gt 0 ]
       then
          valid_mfa_cookie=true
-         log_debug "Valid multifactor authentication cookie found. Days until expiration: ${days_remaining}"
+         log_debug "Valid multi-factor authentication cookie found. Days until expiration: ${days_remaining}"
       else
          rm -f "/config/${cookie_file}"
          log_error "Cookie expired at: ${mfa_expire_date}"
@@ -790,7 +763,7 @@ check_multifactor_authentication_cookie()
       fi
    else
       rm -f "/config/${cookie_file}"
-      log_error "Cookie is not multifactor authentication capable, authentication type may have changed"
+      log_error "Cookie is not multi-factor authentication capable, authentication type may have changed"
       log_error "Invalid cookie file has been removed. Restarting container in 5 minutes"
       sleep 300
       exit 1
@@ -800,7 +773,7 @@ check_multifactor_authentication_cookie()
 display_multifactor_authentication_expiry()
 {
    local error_message
-   log_info "Multifactor authentication cookie expires: ${mfa_expire_date/ / @ }"
+   log_info "Multi-factor authentication cookie expires: ${mfa_expire_date/ / @ }"
    log_info "Days remaining until expiration: ${days_remaining}"
    if [ "${days_remaining}" -le "${notification_days}" ]
    then
@@ -809,7 +782,7 @@ display_multifactor_authentication_expiry()
          cookie_status="cookie expired"
          if [ "${icloud_china}" = false ]
          then
-            error_message="Final day before multifactor authentication cookie expires for Apple ID: ${apple_id} - Please reinitialise now. This is your last reminder"
+            error_message="Final day before multi-factor authentication cookie expires for Apple ID: ${apple_id} - Please reinitialise now. This is your last reminder"
          else
             error_message="今天是 ${name} 的 Apple ID 两步验证 cookie 到期前的最后一天 - 请立即重新初始化，这是最后的提醒"
          fi
@@ -817,19 +790,19 @@ display_multifactor_authentication_expiry()
          cookie_status="cookie expiration"
          if [ "${icloud_china}" = false ]
          then
-            error_message="Only ${days_remaining} days until multifactor authentication cookie expires for Apple ID: ${apple_id} - Please reinitialise"
+            error_message="Only ${days_remaining} days until multi-factor authentication cookie expires for Apple ID: ${apple_id} - Please reinitialise"
          else
             error_message="${days_remaining} 天后 ${name} 的 Apple ID 两步验证将到期 - 请立即重新初始化"
          fi
       fi
       log_warning "${error_message}"
-      if [ "${synchronisation_time:=$(date +%s -d '+15 minutes')}" -gt "${next_notification_time:=$(date +%s)}" ]
+      if [ "${download_time:=$(date +%s -d '+15 minutes')}" -gt "${next_notification_time:=$(date +%s)}" ]
       then
          if [ "${icloud_china}" = false ]
          then
-            send_notification "${cookie_status}" "Multifactor Authentication Cookie Expiration" "2" "${error_message}"
+            send_notification "${cookie_status}" "Multi-factor Authentication Cookie Expiration" "2" "${error_message}"
          else
-            send_notification "${cookie_status}" "Multifactor Authentication Cookie Expiration" "2" "${error_message}" "" "" "" "${days_remaining} 天后，${name} 的身份验证到期" "${error_message}"
+            send_notification "${cookie_status}" "Multi-factor Authentication Cookie Expiration" "2" "${error_message}" "" "" "" "${days_remaining} 天后，${name} 的身份验证到期" "${error_message}"
          fi
          next_notification_time="$(date +%s -d "+24 hour")"
          log_debug "Next notification not before: $(date +%H:%M:%S -d "${next_notification_time} seconds")"
@@ -845,9 +818,9 @@ check_files()
    fi
    log_info "Check for new files using password stored in keyring file"
    log_info "Generating list of files in iCloud. This may take a long time if you have a large photo collection. Please be patient. Nothing is being downloaded at this time"
-   log_debug "Launch command: /opt/icloudpd/bin/icloudpd --directory ${download_path} --cookie-directory /config --username ${apple_id} --domain ${auth_domain} --folder-structure ${folder_structure} --only-print-filenames"
+   log_debug "Launch command: /opt/icloudpd/bin/icloudpd --directory ${download_path} --cookie-directory /config --username ${apple_id} --domain ${auth_domain} --folder-structure ${folder_structure} --keep-unicode-in-filenames true --only-print-filenames"
    >/tmp/icloudpd/icloudpd_check_error
-   run_as "(/opt/icloudpd/bin/icloudpd --directory ${download_path} --cookie-directory /config --username ${apple_id} --domain ${auth_domain} --folder-structure ${folder_structure} --only-print-filenames 2>/tmp/icloudpd/icloudpd_check_error; echo $? >/tmp/icloudpd/icloudpd_check_exit_code) | tee /tmp/icloudpd/icloudpd_check.log"
+   run_as "(/opt/icloudpd/bin/icloudpd --directory ${download_path} --cookie-directory /config --username ${apple_id} --domain ${auth_domain} --folder-structure ${folder_structure} --keep-unicode-in-filenames true --only-print-filenames 2>/tmp/icloudpd/icloudpd_check_error; echo $? >/tmp/icloudpd/icloudpd_check_exit_code) | tee /tmp/icloudpd/icloudpd_check.log"
    check_exit_code="$(cat /tmp/icloudpd/icloudpd_check_exit_code)"
    if [ "${check_exit_code}" -ne 0 ] || [ -s /tmp/icloudpd/icloudpd_check_error ]
    then
@@ -864,11 +837,11 @@ check_files()
       fi
       if [ "${icloud_china}" = false ]
       then
-         send_notification "failure" "iCloudPD container failure" "0" "iCloudPD failed check for new files for Apple ID: ${apple_id}"
+         send_notification "failure" "iCloudPD container failure" "1" "iCloudPD failed check for new files for Apple ID: ${apple_id}"
       else
          syn_end_time="$(date '+%H:%M:%S')"
-         syn_next_time="$(date +%H:%M:%S -d "${synchronisation_interval} seconds")"
-         send_notification "failure" "iCloudPD container failure" "0" "检查 iCloud 图库新照片失败，将在 ${syn_next_time} 再次尝试" "" "" "" "检查 ${name} 的 iCloud 图库新照片失败" "将在 ${syn_next_time} 再次尝试"
+         syn_next_time="$(date +%H:%M:%S -d "${download_interval} seconds")"
+         send_notification "failure" "iCloudPD container failure" "1" "检查 iCloud 图库新照片失败，将在 ${syn_next_time} 再次尝试" "" "" "" "检查 ${name} 的 iCloud 图库新照片失败" "将在 ${syn_next_time} 再次尝试"
       fi
    else
       log_info "Check successful"
@@ -897,16 +870,20 @@ downloaded_files_notification()
       if [ "${icloud_china}" = false ]
       then
          new_files_text="Files downloaded for Apple ID ${apple_id}: ${new_files_count}"
+         if [ "${silent_file_notifications}" = true ]
+         then
+            disable_notification=true
+         fi
          send_notification "downloaded files" "New files detected" "0" "${new_files_text}" "${new_files_preview_count}" "downloaded" "${new_files_preview}"
       else
          # 结束时间、下次同步时间
          syn_end_time="$(date '+%H:%M:%S')"
-         syn_next_time="$(date +%H:%M:%S -d "${synchronisation_interval} seconds")"
+         syn_next_time="$(date +%H:%M:%S -d "${download_interval} seconds")"
          new_files_text="iCloud 图库同步完成，新增 ${new_files_count} 张照片"
          send_notification "downloaded files" "New files detected" "0" "${new_files_text}" "${new_files_preview_count}" "下载" "${new_files_preview}" "新增 ${new_files_count} 张照片 - ${name}" "下次同步时间 ${syn_next_time}"
       fi
    fi
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 deleted_files_notification()
@@ -923,16 +900,20 @@ deleted_files_notification()
       if [ "${icloud_china}" = false ]
       then
          deleted_files_text="Files deleted for Apple ID ${apple_id}: ${deleted_files_count}"
+         if [ "${silent_file_notifications}" = true ]
+         then
+            disable_notification=true
+         fi
          send_notification "deleted files" "Recently deleted files detected" "0" "${deleted_files_text}" "${deleted_files_preview_count}" "deleted" "${deleted_files_preview}"
       else
          # 结束时间、下次同步时间
          syn_end_time="$(date '+%H:%M:%S')"
-         syn_next_time="$(date +%H:%M:%S -d "${synchronisation_interval} seconds")"
+         syn_next_time="$(date +%H:%M:%S -d "${download_interval} seconds")"
          deleted_files_text="iCloud 图库同步完成，删除 ${deleted_files_count} 张照片"
          send_notification "deleted files" "Recently deleted files detected" "0" "${deleted_files_text}" "${deleted_files_preview_count}" "删除" "${deleted_files_preview}" "删除 ${deleted_files_count} 张照片 - ${name}" "下次同步时间 ${syn_next_time}"
       fi
    fi
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 download_albums()
@@ -986,12 +967,12 @@ download_albums()
       if [ "$(cat /tmp/icloudpd/icloudpd_download_exit_code)" -ne 0 ]
       then
          log_error "Failed downloading album: ${album}"
-         IFS="${save_ifs}"
+         IFS="${OLDIFS}"
          sleep 10
          break
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 download_libraries()
@@ -1045,12 +1026,12 @@ download_libraries()
       if [ "$(cat /tmp/icloudpd/icloudpd_download_exit_code)" -ne 0 ]
       then
          log_error "Failed downloading library: ${library}"
-         IFS="${save_ifs}"
+         IFS="${OLDIFS}"
          sleep 10
          break
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 download_photos()
@@ -1070,7 +1051,7 @@ check_nextcloud_connectivity()
 {
    local nextcloud_check_result counter
    log_info "Checking Nextcloud connectivity..."
-   nextcloud_check_result="$(curl --silent --max-time 15 --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --output /dev/null "${nextcloud_url%/}/remote.php/dav/files/${nextcloud_username}/")"
+   nextcloud_check_result="$(curl --silent --max-time 15 --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --output /dev/null "${nextcloud_url}/remote.php/dav/files/${nextcloud_username}/")"
    if [ "${nextcloud_check_result}" -ne 200 ]
    then
       log_error "Nextcloud connectivity check failed: ${nextcloud_check_result}"
@@ -1084,7 +1065,7 @@ check_nextcloud_connectivity()
          then
             send_notification "Nextcloud" "failed" "0" "Nextcloud has been offline for user ${user} since ${fail_time}. Please take corrective action. icloudpd will remain paused until this issue is rectified"
          fi
-         nextcloud_check_result="$(curl --silent --location --max-time 15 --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --output /dev/null "${nextcloud_url%/}/remote.php/dav/files/${nextcloud_username}/")"
+         nextcloud_check_result="$(curl --silent --location --max-time 15 --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --output /dev/null "${nextcloud_url}/remote.php/dav/files/${nextcloud_username}/")"
       done
       send_notification "Nextcloud" "success" "0" "Nextcloud server is back online. Resuming operation"
    fi
@@ -1136,9 +1117,9 @@ nextlcoud_create_directories()
 
    encoded_destination_directories=$(for destination_directory in $destination_directories
       do
-         echo "${nextcloud_url%/}/remote.php/dav/files/$(echo $(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}${destination_directory}/"))"
+         echo "${nextcloud_url}/remote.php/dav/files/$(echo $(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${destination_directory}/"))"
       done)
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 
    for nextcloud_destination in ${encoded_destination_directories}; do
       log_info_n " - ${nextcloud_destination} "
@@ -1188,11 +1169,12 @@ nextcloud_sync()
 nextcloud_upload()
 {
    IFS=$'\n'
-   local nextcloud_destination curl_response
+   local relative_filename nextcloud_destination curl_response
    log_info "Uploading files to Nextcloud"
    for full_filename in $(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | cut --delimiter " " --fields 9-)
    do
-      nextcloud_destination="${nextcloud_url%/}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}$(echo ${full_filename} | sed "s%${download_path}%%")")"
+      relative_filename="$(echo ${full_filename} | sed "s%${download_path}%%")"
+      nextcloud_destination="${nextcloud_url}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${relative_filename}")"
       if [ ! -f "${full_filename}" ]
       then
          log_warning "Media file ${full_filename} does not exist. It may exist in 'Recently Deleted' so has been removed post download"
@@ -1205,21 +1187,17 @@ nextcloud_upload()
          else
             echo "Unexpected response: ${curl_response}"
          fi
-         if [ -f "${full_filename%.HEIC}.JPG" ]
+         if [ "${full_filename##*.}" = 'HEIC' ]
          then
-            log_info_n "Uploading ${full_filename} to ${nextcloud_destination%.HEIC}.JPG"
-            curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${full_filename}" "${nextcloud_destination%.HEIC}.JPG")"
-            if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 299 ]
-            then
-               echo "Success"
-            else
-               echo "Unexpected response: ${curl_response}"
-            fi
+            file_extension='JPG'
+         elif [ "${full_filename##*.}" = 'heic' ]
+         then
+            file_extension='jpg'
          fi
-         if [ -f "${full_filename%.heic}.jpg" ]
+         if [ -f "${full_filename%.*}.${file_extension}" ]
          then
-            log_info_n "Uploading ${full_filename} to ${nextcloud_destination%.heic}.jpg"
-            curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${full_filename}" "${nextcloud_destination%.heic}.jpg")"
+            log_info_n "Uploading ${full_filename} to ${nextcloud_destination%.*}.${file_extension}"
+            curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${full_filename}" "${nextcloud_destination%.*}.${file_extension}")"
             if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 299 ]
             then
                echo "Success"
@@ -1229,17 +1207,18 @@ nextcloud_upload()
          fi
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 nextcloud_delete()
 {
    IFS=$'\n'
-   local nextcloud_destination curl_response
+   local relative_filename nextcloud_destination curl_response
    log_info "Delete files from Nextcloud..."
    for full_filename in $(grep "Deleted /" /tmp/icloudpd/icloudpd_sync.log | cut --delimiter " " --fields 9-)
    do
-      nextcloud_destination="${nextcloud_url%/}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}$(echo ${full_filename} | sed "s%${download_path}%%")")"
+      relative_filename="$(echo ${full_filename} | sed "s%${download_path}%%")"
+      nextcloud_destination="${nextcloud_url}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${relative_filename}")"
       log_debug "Checking file path: ${nextcloud_destination}"
       curl_response="$(curl --silent --show-error --location --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination}" --output /dev/null --write-out "%{http_code}")"
       if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 200 ]
@@ -1257,34 +1236,21 @@ nextcloud_delete()
       else
          echo "Unexpected response: ${curl_response}"
       fi
-      if [ -f "${full_filename%.HEIC}.JPG" ]
+      if [ "${full_filename##*.}" = 'HEIC' ]
       then
-         log_debug "Checking file path: ${nextcloud_destination%.HEIC}.JPG"
-         curl_response="$(curl --silent --show-error --location --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination%.HEIC}.JPG" --output /dev/null --write-out "%{http_code}")"
-         if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 200 ]
-         then
-            log_info_n " - File exists, deleting"
-            if curl --silent --show-error --location --request DELETE --user "${nextcloud_username}:${nextcloud_password}" --output /dev/null "${nextcloud_destination%.HEIC}.JPG"
-            then
-               echo "Success"
-            else
-               echo "Error: $?"
-            fi
-         elif [ "${curl_response}" -eq 404 ]
-         then
-            echo "File not found: ${nextcloud_destination%.HEIC}.JPG"
-         else
-            echo "Unexpected response: ${curl_response}"
-         fi
+         file_extension='JPG'
+      elif [ "${full_filename##*.}" = 'heic' ]
+      then
+         file_extension='jpg'
       fi
-      if [ -f "${full_filename%.heic}.jpg" ]
+      if [ -f "${full_filename%.*}.${file_extension}" ]
       then
-         log_debug "Checking file path: ${nextcloud_destination%.heic}.jpg"
-         curl_response="$(curl --silent --show-error --location --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination%.heic}.jpg" --output /dev/null --write-out "%{http_code}")"
+         log_debug "Checking file path: ${nextcloud_destination%.*}.${file_extension}"
+         curl_response="$(curl --silent --show-error --location --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination%.*}.${file_extension}" --output /dev/null --write-out "%{http_code}")"
          if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 200 ]
          then
             log_info_n " - File exists, deleting"
-            if curl --silent --show-error --location --request DELETE --user "${nextcloud_username}:${nextcloud_password}" --output /dev/null "${nextcloud_destination%.heic}.jpg"
+            if curl --silent --show-error --location --request DELETE --user "${nextcloud_username}:${nextcloud_password}" --output /dev/null "${nextcloud_destination%.*}.${file_extension}"
             then
                echo "Success"
             else
@@ -1292,13 +1258,13 @@ nextcloud_delete()
             fi
          elif [ "${curl_response}" -eq 404 ]
          then
-            echo "File not found: ${nextcloud_destination%.heic}.jpg"
+            echo "File not found: ${nextcloud_destination%.*}.${file_extension}"
          else
             echo "Unexpected response: ${curl_response}"
          fi
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 nextlcoud_delete_directories()
@@ -1309,7 +1275,7 @@ nextlcoud_delete_directories()
    directories_list="$(grep "Deleted /" /tmp/icloudpd/icloudpd_sync.log | cut --delimiter " " --fields 9- | sed 's~\(.*/\).*~\1~' | sed "s%${download_path}%%" | sort --unique --reverse | grep -v "^$")"
    for target_directory in ${directories_list}
    do
-      nextcloud_target="${nextcloud_url%/}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}${target_directory}")"
+      nextcloud_target="${nextcloud_url}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${target_directory}")"
       log_debug "Checking if Nextcloud directory is empty: ${nextcloud_target}"
       curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --request PROPFIND "${nextcloud_target}" | grep -ow '<d:href>' | wc -l)"
       if [ "${curl_response}" -ge 2 ]
@@ -1326,22 +1292,22 @@ nextlcoud_delete_directories()
          fi
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 nextcloud_upload_library()
 {
    log_info "Uploading entire library to Nextcloud. This may take a while..."
-   local destination_directories encoded_destination_directories curl_response
+   local destination_directories encoded_destination_directories relative_filename nextcloud_destination curl_response
    log_info "Checking Nextcloud destination directories..."
    destination_directories=$(find "${download_path}" -type d ! -name '.*' 2>/dev/null | sed "s%${download_path}%%" | grep -v "^$" | sort --unique)
 
    IFS=$'\n'
    encoded_destination_directories=$(for destination_directory in $destination_directories
       do
-         echo "${nextcloud_url%/}/remote.php/dav/files/$(echo $(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}${destination_directory}/"))"
+         echo "${nextcloud_url}/remote.php/dav/files/$(echo $(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${destination_directory}"))"
       done)
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 
    for nextcloud_destination in ${encoded_destination_directories}; do
       log_info_n " - ${nextcloud_destination} "
@@ -1364,14 +1330,15 @@ nextcloud_upload_library()
 
    log_info "Checking Nextcloud destination files..."
    IFS=$'\n'
-   for full_filename in $(find "${download_path}" -type f ! -name '.*' 2>/dev/null | sed "s%${download_path}%%")
+   for full_filename in $(find "${download_path}" -type f ! -name '.*' 2>/dev/null)
    do
-      nextcloud_destination="${nextcloud_url%/}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir%/}$(echo ${full_filename})")"
+      relative_filename="$(echo ${full_filename} | sed "s%${download_path}%%")"
+      nextcloud_destination="${nextcloud_url}/remote.php/dav/files/$(nextcloud_url_encoder "${nextcloud_username}/${nextcloud_target_dir}${relative_filename}")"
 
       log_info_n "Uploading ${full_filename} to ${nextcloud_destination}"
       if curl --silent --output /dev/null --fail --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination}"
       then
-         echo "File already exsits"
+         echo "File already exists"
       else
          curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${full_filename}" "${nextcloud_destination}")"
          if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 299 ]
@@ -1381,62 +1348,32 @@ nextcloud_upload_library()
             echo "Unexpected response: ${curl_response}"
          fi
       fi
-      if [ -f "${full_filename%.HEIC}.JPG" ]
-      then
-         log_info_n "Uploading ${full_filename%.HEIC}.JPG to ${nextcloud_destination%.HEIC}.JPG"
-         if curl --silent --output /dev/null --fail --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination%.HEIC}.JPG"
-         then
-            log_info_n "File already exsits"
-         else
-            curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${nextcloud_destination%.HEIC}.JPG")"
-            if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 299 ]
-            then
-               echo "Success"
-            else
-               echo "Unexpected response: ${curl_response}"
-            fi
-         fi
-      fi
-      if [ -f "${full_filename%.heic}.jpg" ]
-      then
-         log_info_n "Uploading ${full_filename%.heic}.jpg to ${nextcloud_destination%.heic}.jpg"
-         if curl --silent --output /dev/null --fail --head --user "${nextcloud_username}:${nextcloud_password}" "${nextcloud_destination%.heic}.jpg"
-         then
-            log_info_n "File already exsits"
-         else
-            curl_response="$(curl --silent --show-error --location --user "${nextcloud_username}:${nextcloud_password}" --write-out "%{http_code}" --upload-file "${nextcloud_destination%.heic}.jpg")"
-            if [ "${curl_response}" -ge 200 ] && [ "${curl_response}" -le 299 ]
-            then
-               echo "Success"
-            else
-               echo "Unexpected response: ${curl_response}"
-            fi
-         fi
-      fi
+
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 convert_downloaded_heic_to_jpeg()
 {
    IFS=$'\n'
    log_info "Convert HEIC to JPEG..."
-   for heic_file in $(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | grep ".HEIC" | cut --delimiter " " --fields 9-)
+   for heic_file in $(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | grep -i ".HEIC" | cut --delimiter " " --fields 9-)
    do
       if [ ! -f "${heic_file}" ]
       then
          log_warning "HEIC file ${heic_file} does not exist. It may exist in 'Recently Deleted' so has been removed post download"
       else
-         jpeg_file="${heic_file%.HEIC}.JPG"
+         if [ "${heic_file##*.}" = 'HEIC' ]
+         then
+            file_extension='JPG'
+         else
+            file_extension='jpg'
+         fi
+         jpeg_file="${heic_file%.*}.${file_extension}"
          if [ "${jpeg_path}" ]
          then
-            if [ ! -d "${jpeg_path}" ]
-            then
-               mkdir --parents "${jpeg_path}"
-               chown "${user}:${group}" "${jpeg_path}"
-            fi
             jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
-            jpeg_directory="$(dirname "${jpeg_file/${download_path}/${jpeg_path}}")"
+            jpeg_directory="$(dirname "${jpeg_file}")"
             if [ ! -d "${jpeg_directory}" ]
             then
                mkdir --parents "${jpeg_directory}"
@@ -1453,13 +1390,13 @@ convert_downloaded_heic_to_jpeg()
          chown "${user}:${group}" "${jpeg_file}"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 sideways_copy_all_videos()
 {
    # Copy videos sideways to alternate directory
-   local video_list folder_list
+   local video_list sorted_video_list
    log_info "Sideways copy all videos to alternate directory..."
    if [ -z "${video_path}" ] 
    then
@@ -1475,25 +1412,25 @@ sideways_copy_all_videos()
 
    IFS=$'\n'
    video_list="$(find "${download_path}" -type f -iname "*.mp4" -o -iname "*.mov" | grep -vi hevc.mov)"
-   folder_list="$(for line in ${video_list}; do echo ${line}; done | sort --unique)"
-   destination_directories=$(echo "${folder_list}" | while read -r line
+   sorted_video_list="$(for line in ${video_list}; do echo ${line}; done | sort --unique)"
+   destination_directories=$(echo "${sorted_video_list}" | while read -r line
    do
       for level in $(seq 1 $(echo "${line}" | tr -cd '/' | wc -c))
       do
-         echo "${line}" | cut -d'/' -f1-"${level}"
+         echo "${line}" | cut --delimiter'/'--fields 1-"${level}"
       done
    done | sort --unique)
 
    log_debug " - Creating destination folders..."
    for folder in ${destination_directories}
    do
-      log_debug "   | Processing: ${folder}"
-      if [ ! -d "${video_path}${folder}" ]
+      log_debug "   | Processing: ${video_path}/${folder}"
+      if [ ! -d "${video_path}/${folder}" ]
       then
-         log_debug "   | Creating: ${video_path}${folder}"
-         mkdir --parents "${video_path}${folder}" >/dev/null
-         chown --reference="${folder}" "${video_path}${folder}"
-         chmod --reference="${folder}" "${video_path}${folder}"
+         log_debug "   | Creating: ${video_path}/${folder}"
+         mkdir --parents "${video_path}/${folder}" >/dev/null
+         chown --reference="${folder}" "${video_path}/${folder}"
+         chmod --reference="${folder}" "${video_path}/${folder}"
       fi
    done
 
@@ -1502,21 +1439,21 @@ sideways_copy_all_videos()
    do
       if [ "${sideways_copy_videos_mode}" = "move" ] && [ "${delete_after_download}" = true ]
       then
-         log_debug "   | Moving ${video} to ${video_path}${video}"
-         mv --update=none --preserve "${video}" "${video_path}${video}"
+         log_debug "   | Moving ${video} to ${video_path}/${video}"
+         mv --update=none --preserve "${video}" "${video_path}/${video}"
       elif [ "${sideways_copy_videos_mode}" = "copy" ]
       then
-         log_debug "   | Copying ${video} to ${video_path}${video}"
-         cp --update=none --preserve "${video}" "${video_path}${video}"
+         log_debug "   | Copying ${video} to ${video_path}/${video}"
+         cp --update=none --preserve "${video}" "${video_path}/${video}"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 sideways_copy_videos()
 {
    # Copy videos sideways to alternate directory
-   local video_list folder_list
+   local video_list sorted_video_list
    log_info "Sideways copy videos to alternate directory..."
    if [ -z "${video_path}" ] 
    then
@@ -1532,8 +1469,8 @@ sideways_copy_videos()
 
    IFS=$'\n'
    video_list="$(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | grep -i ".mov$\|.mp4$" | grep -vi "hevc.mov$" | cut --delimiter " " --fields 9-)"
-   folder_list="$(for line in ${video_list}; do echo ${line}; done | sort --unique)"
-   destination_directories=$(echo "${folder_list}" | while read -r line
+   sorted_video_list="$(for line in ${video_list}; do echo ${line}; done | sort --unique)"
+   destination_directories=$(echo "${sorted_video_list}" | while read -r line
    do
       for level in $(seq 1 $(echo "${line}" | tr -cd '/' | wc -c))
       do
@@ -1545,12 +1482,12 @@ sideways_copy_videos()
    for folder in ${destination_directories}
    do
       log_debug "   | Processing: ${folder}"
-      if [ ! -d "${video_path}${folder}" ]
+      if [ ! -d "${video_path}/${folder}" ]
       then
-         log_debug "   | Creating: ${video_path}${folder}"
-         mkdir --parents "${video_path}${folder}" >/dev/null
-         chown --reference="${folder}" "${video_path}${folder}"
-         chmod --reference="${folder}" "${video_path}${folder}"
+         log_debug "   | Creating: ${video_path}/${folder}"
+         mkdir --parents "${video_path}/${folder}" >/dev/null
+         chown --reference="${folder}" "${video_path}/${folder}"
+         chmod --reference="${folder}" "${video_path}/${folder}"
       fi
    done
 
@@ -1559,15 +1496,15 @@ sideways_copy_videos()
    do
       if [ "${sideways_copy_videos_mode}" = "move" ] && [ "${delete_after_download}" = true ]
       then
-         log_debug "   | Moving ${video} to ${video_path}${video}"
-         mv --update=none --preserve "${video}" "${video_path}${video}"
+         log_debug "   | Moving ${video} to ${video_path}/${video}"
+         mv --update=none --preserve "${video}" "${video_path}/${video}"
       elif [ "${sideways_copy_videos_mode}" = "copy" ]
       then
-         log_debug "   | Copying ${video} to ${video_path}${video}"
-         cp --update=none --preserve "${video}" "${video_path}${video}"
+         log_debug "   | Copying ${video} to ${video_path}/${video}"
+         cp --update=none --preserve "${video}" "${video_path}/${video}"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 synology_photos_app_fix()
@@ -1575,39 +1512,40 @@ synology_photos_app_fix()
    # Works for onestix. Do not obsolete
    IFS=$'\n'
    log_info "Fixing Synology Photos App import issue..."
-   for heic_file in $(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | grep ".HEIC" | cut --delimiter " " --fields 9-)
+   for heic_file in $(grep "Downloaded /" /tmp/icloudpd/icloudpd_sync.log | grep -i ".HEIC" | cut --delimiter " " --fields 9-)
    do
-      log_debug "Create empty date/time reference file ${heic_file%.HEIC}.TMP"
-      run_as "touch --reference=\"${heic_file}\" \"${heic_file%.HEIC}.TMP\""
+      log_debug "Create empty date/time reference file ${heic_file%.*}.TMP"
+      run_as "touch --reference=\"${heic_file}\" \"${heic_file%.*}.TMP\""
       log_debug "Set time stamp for ${heic_file} to current: $(date)"
       run_as "touch \"${heic_file}\"" 
-      log_debug "Set time stamp for ${heic_file} to original: $(date -r "${heic_file%.HEIC}.TMP" +"%a %b %e %T %Y")"
-      run_as "touch --reference=\"${heic_file%.HEIC}.TMP\" \"${heic_file}\""
-      log_debug "Removing temporary file ${heic_file%.HEIC}.TMP"
+      log_debug "Set time stamp for ${heic_file} to original: $(date -r "${heic_file%.*}.TMP" +"%a %b %e %T %Y")"
+      run_as "touch --reference=\"${heic_file%.*}.TMP\" \"${heic_file}\""
+      log_debug "Removing temporary file ${heic_file%.*}.TMP"
       if [ -z "${persist_temp_files}" ]
       then
-         rm "${heic_file%.HEIC}.TMP"
+         rm "${heic_file%.*}.TMP"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 convert_all_heic_files()
 {
    IFS=$'\n'
    log_info "Convert all HEICs to JPEG, if required..."
-   for heic_file in $(find "${download_path}" -type f -iname *.HEIC 2>/dev/null); do
+   for heic_file in $(find "${download_path}" -type f -iname "*.HEIC" 2>/dev/null); do
       log_debug "HEIC file found: ${heic_file}"
-      jpeg_file="${heic_file%.HEIC}.JPG"
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      else
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
-         if [ ! -d "${jpeg_path}" ]
-         then
-            mkdir --parents "${jpeg_path}"
-            chown "${user}:${group}" "${jpeg_path}"
-         fi
          jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
-         jpeg_directory="$(dirname "${jpeg_file/${download_path}/${jpeg_path}}")"
+         jpeg_directory="$(dirname "${jpeg_file}")"
          if [ ! -d "${jpeg_directory}" ]
          then
             mkdir --parents "${jpeg_directory}"
@@ -1626,7 +1564,7 @@ convert_all_heic_files()
          chown "${user}:${group}" "${jpeg_file}"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 remove_all_jpeg_files()
@@ -1635,9 +1573,15 @@ remove_all_jpeg_files()
    log_warning "Remove all JPGs that have accompanying HEIC files. This could result in data loss if HEIC file name matches the JPG file name, but content does not"
    log_info "Waiting for 2mins before progressing. Please stop the container now, if this is not what you want to do..."
    sleep 120
-   for heic_file in $(find "${download_path}" -type f -iname *.HEIC 2>/dev/null)
+   for heic_file in $(find "${download_path}" -type f -iname "*.HEIC" 2>/dev/null)
    do
-      jpeg_file="${heic_file%.HEIC}.JPG"
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      else
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
          jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
@@ -1648,7 +1592,7 @@ remove_all_jpeg_files()
          rm "${jpeg_file}"
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 force_convert_all_heic_files()
@@ -1657,17 +1601,18 @@ force_convert_all_heic_files()
    log_warning "Force convert all HEICs to JPEG. This could result in data loss if JPG files have been edited on disk"
    log_info "Waiting for 2mins before progressing. Please stop the container now, if this is not what you want to do..."
    sleep 120
-   for heic_file in $(find "${download_path}" -type f -iname *.HEIC 2>/dev/null); do
-      jpeg_file="${heic_file%.HEIC}.JPG"
+   for heic_file in $(find "${download_path}" -type f -iname "*.HEIC" 2>/dev/null); do
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      else
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
-         if [ ! -d "${jpeg_path}" ]
-         then
-            mkdir --parents "${jpeg_path}"
-            chown "${user}:${group}" "${jpeg_path}"
-         fi
          jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
-         jpeg_directory="$(dirname "${jpeg_file/${download_path}/${jpeg_path}}")"
+         jpeg_directory="$(dirname "${jpeg_file}")"
          if [ ! -d "${jpeg_directory}" ]
          then
             mkdir --parents "${jpeg_directory}"
@@ -1687,7 +1632,7 @@ force_convert_all_heic_files()
       log_debug "Correct owner and group of ${jpeg_file} to ${user}:${group}"
       chown "${user_id}:${group_id}" "${jpeg_file}"
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 force_convert_all_mnt_heic_files()
@@ -1696,9 +1641,15 @@ force_convert_all_mnt_heic_files()
    log_warning "Force convert all HEICs in /mnt directory to JPEG. This could result in data loss if JPG files have been edited on disk"
    log_info "Waiting for 2mins before progressing. Please stop the container now, if this is not what you want to do..."
    sleep 120
-   for heic_file in $(find "/mnt" -type f -iname *.HEIC 2>/dev/null)
+   for heic_file in $(find "/mnt" -type f -iname "*.HEIC" 2>/dev/null)
    do
-      jpeg_file="${heic_file%.HEIC}.JPG"
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      else
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
          jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
@@ -1713,16 +1664,22 @@ force_convert_all_mnt_heic_files()
       log_debug "Correct owner and group of ${jpeg_file} to ${user}:${group}"
       chown "${user}:${group}" "${jpeg_file}"
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 correct_jpeg_timestamps()
 {
    IFS=$'\n'
    log_info "Check and correct converted HEIC timestamps..."
-   for heic_file in $(find "${download_path}" -type f -iname *.HEIC 2>/dev/null)
+   for heic_file in $(find "${download_path}" -type f -iname "*.HEIC" 2>/dev/null)
    do
-      jpeg_file="${heic_file%.HEIC}.JPG"
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      else
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
          jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
@@ -1743,34 +1700,47 @@ correct_jpeg_timestamps()
          fi
       fi
    done
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 remove_recently_deleted_accompanying_files()
 {
    IFS=$'\n'
    log_info "Deleting 'Recently Deleted' accompanying files (.JPG/_HEVC.MOV)..."
-   for heic_file in $(grep "Deleted /" /tmp/icloudpd/icloudpd_sync.log | grep ".HEIC" | cut --delimiter " " --fields 9-)
+   for heic_file in $(grep "Deleted /" /tmp/icloudpd/icloudpd_sync.log | grep -i ".HEIC" | cut --delimiter " " --fields 9-)
    do
-      heic_file_clean="${heic_file/!/}"
-      jpeg_file_clean="${heic_file_clean%.HEIC}.JPG"
+      # Remove trailing exlaimation mark
+      heic_file="${heic_file/\!/}"
+      if [ "${heic_file##*.}" = 'HEIC' ]
+      then
+         file_extension='JPG'
+      elif [ "${heic_file##*.}" = 'heic' ]
+      then
+         file_extension='jpg'
+      fi
+      jpeg_file="${heic_file%.*}.${file_extension}"
       if [ "${jpeg_path}" ]
       then
-         jpeg_file_clean="${jpeg_file_clean/${download_path}/${jpeg_path}}"
+         jpeg_file="${jpeg_file/${download_path}/${jpeg_path}}"
       fi
-      if [ -f "${jpeg_file_clean}" ]
+      if [ -f "${jpeg_file}" ]
       then
-         log_debug "Deleting ${jpeg_file_clean}"
-         rm -f "${jpeg_file_clean}"
+         log_debug "Deleting ${jpeg_file}"
+         rm -f "${jpeg_file}"
       fi
-      if [ -f "${heic_file_clean%.HEIC}_HEVC.MOV" ]
+      if [ -f "${heic_file%.*}_HEVC.MOV" ]
       then
-         log_debug "Deleting ${heic_file_clean%.HEIC}_HEVC.MOV"
-         rm -f "${heic_file_clean%.HEIC}_HEVC.MOV"
+         log_debug "Deleting ${heic_file%.*}_HEVC.MOV"
+         rm -f "${heic_file%.*}_HEVC.MOV"
+      fi
+      if [ -f "${heic_file%.*}_hevc.mov" ]
+      then
+         log_debug "Deleting ${heic_file%.*}_hevc.mov"
+         rm -f "${heic_file%.*}_hevc.mov"
       fi
    done
    log_info "Deleting 'Recently Deleted' accompanying files complete"
-   IFS="${save_ifs}"
+   IFS="${OLDIFS}"
 }
 
 remove_empty_directories()
@@ -1788,10 +1758,10 @@ remove_empty_directories()
 
 send_notification()
 {
-   local notification_classification notification_event notification_prority notification_message notification_result notification_files_preview_count notification_files_preview_type notification_files_preview_text
+   local notification_classification notification_event notification_priority notification_message notification_result notification_files_preview_count notification_files_preview_type notification_files_preview_text
    notification_classification="${1}"
    notification_event="${2}"
-   notification_prority="${3}"
+   notification_priority="${3}"
    notification_message="${4}"
    notification_files_preview_count="${5}"
    notification_files_preview_type="${6}"
@@ -1832,22 +1802,22 @@ send_notification()
    fi
    if [ "${notification_type}" ]
    then
-      log_info "Sending ${notification_type} ${notification_classification} notification"
+      log_info "Sending ${notification_type_tc} ${notification_classification} notification"
    fi
-   if [ "${notification_type}" = "Prowl" ]
+   if [ "${notification_type}" = "prowl" ]
    then
       notification_result="$(curl --silent --output /dev/null --write-out "%{http_code}" "${notification_url}"  \
          --form apikey="${prowl_api_key}" \
          --form application="${notification_title}" \
          --form event="${notification_event}" \
-         --form priority="${notification_prority}" \
+         --form priority="${notification_priority}" \
          --form description="${notification_message}")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Pushover" ]
+   elif [ "${notification_type}" = "pushover" ]
    then
-      if [ "${notification_prority}" = "2" ]
+      if [ "${notification_priority}" = "2" ]
       then
-         notification_prority=1
+         notification_priority=1
       fi
       if [ "${notification_files_preview_count}" ]
       then
@@ -1860,10 +1830,10 @@ send_notification()
          --form-string "token=${pushover_token}" \
          --form-string "title=${notification_title}" \
          --form-string "sound=${pushover_sound}" \
-         --form-string "priority=${notification_prority}" \
+         --form-string "priority=${notification_priority}" \
          --form-string "message=${pushover_text}")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Telegram" ]
+   elif [ "${notification_type}" = "telegram" ]
    then
       if [ "${notification_files_preview_count}" ]
       then
@@ -1874,10 +1844,10 @@ send_notification()
       notification_result="$(curl --silent --output /dev/null --write-out "%{http_code}" --request POST "${notification_url}" \
          --data chat_id="${telegram_chat_id}" \
          --data parse_mode="markdown" \
-         --data disable_notification="${telegram_disable_notification:=false}" \
+         --data disable_notification="${disable_notification:=false}" \
          --data text="${telegram_text}")"
       curl_exit_code="$?"
-      unset telegram_disable_notification
+      unset disable_notification
    elif [ "${notification_type}" = "openhab" ]
    then
       webhook_payload="$(echo -e "${notification_title} - ${notification_message}")"
@@ -1885,7 +1855,7 @@ send_notification()
          --header 'content-type: text/plain' \
          --data "${webhook_payload}")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Webhook" ]
+   elif [ "${notification_type}" = "webhook" ]
    then
       webhook_payload="$(echo -e "${notification_title} - ${notification_message}")"
       if [ "${webhook_insecure}" = true ]
@@ -1899,7 +1869,7 @@ send_notification()
             --data "{ \"${webhook_body}\" : \"${webhook_payload}\" }")"
       fi
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Discord" ]
+   elif [ "${notification_type}" = "discord" ]
    then
       if [ "${notification_files_preview_count}" ]
       then
@@ -1911,13 +1881,13 @@ send_notification()
          --header 'content-type: application/json' \
          --data "{ \"username\" : \"${notification_title}\" , \"avatar_url\" : \"https://raw.githubusercontent.com/Womabre/-unraid-docker-templates/master/images/photos_icon_large.png\" , \"embeds\" : [ { \"author\" : { \"name\" : \"${notification_event}\" } , \"color\" : 2061822 , \"description\": \"${discord_text}\" } ] }")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Dingtalk" ]
+   elif [ "${notification_type}" = "dingtalk" ]
    then
       notification_result="$(curl --silent --output /dev/null --write-out "%{http_code}" --request POST "${notification_url}" \
          --header 'Content-Type: application/json' \
          --data "{'msgtype': 'markdown','markdown': {'title':'${notification_title}','text':'## ${notification_title}\n${notification_message}'}}")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "IYUU" ]
+   elif [ "${notification_type}" = "iyuu" ]
    then
       if [ "${notification_files_preview_count}" ]
       then
@@ -1936,16 +1906,16 @@ send_notification()
             --data desp="${iyuu_text}")"
       fi
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "WeCom" ]
+   elif [ "${notification_type}" = "wecom" ]
    then
       if [ "$(date +'%s')" -ge "$(date +'%s' -d "${wecom_token_expiry}")" ]
       then
-         log_warning "${notification_type} token has expired"
+         log_warning "${notification_type_tc} token has expired"
          unset wecom_token
       fi
       if [ -z "${wecom_token}" ]
       then
-         log_warning "Obtaining new ${notification_type} token..."
+         log_warning "Obtaining new ${notification_type_tc} token..."
          if [ "${fake_user_agent}" = true ]
          then
             wecom_token="$(/usr/bin/curl --silent --user-agent "${curl_user_agent}" --get "${wecom_token_url}" | awk -F\" '{print $10}')"
@@ -1954,13 +1924,13 @@ send_notification()
          fi
          wecom_token_expiry="$(date --date='2 hour')"
          notification_url="${wecom_base_url}/cgi-bin/message/send?access_token=${wecom_token}"
-         log_info "${notification_type} token: ${wecom_token}"
-         log_info "${notification_type} token expiry time: $(date -d "${wecom_token_expiry}")"
-         log_info "${notification_type} notification URL: ${notification_url}"
+         log_info "${notification_type_tc} token: ${wecom_token}"
+         log_info "${notification_type_tc} token expiry time: $(date -d "${wecom_token_expiry}")"
+         log_info "${notification_type_tc} notification URL: ${notification_url}"
       fi
       # 结束时间、下次同步时间
       syn_end_time="$(date '+%H:%M:%S')"
-      syn_next_time="$(date +%H:%M:%S -d "${synchronisation_interval} seconds")"
+      syn_next_time="$(date +%H:%M:%S -d "${download_interval} seconds")"
       if [ "${notification_files_preview_count}" ]
       then
          log_info "Attempting creating preview count message body"
@@ -1989,13 +1959,13 @@ send_notification()
       fi
       curl_exit_code="$?"
       log_info "Send result: ${notification_result}"
-   elif [ "${notification_type}" = "Gotify" ]
+   elif [ "${notification_type}" = "gotify" ]
    then
       notification_result="$(curl --silent --output /dev/null --write-out "%{http_code}" "${notification_url}"  \
          -F "title=${notification_title}" \
          -F "message=${notification_message}")"
       curl_exit_code="$?"
-   elif [ "${notification_type}" = "Bark" ]
+   elif [ "${notification_type}" = "bark" ]
    then
       if [ "${notification_files_preview_count}" ]
       then
@@ -2017,15 +1987,33 @@ send_notification()
       else
          mail_text="$(echo -e "${notification_icon} ${notification_message}")"
       fi
-      printf "Subject: $notification_message\n\n$mail_text" | msmtp --host=$msmtp_host --port=$msmtp_port --user=$msmtp_user --passwordeval="echo -n $msmtp_pass" --from=$msmtp_from --auth=on --tls=$msmtp_tls "$msmtp_args" -- "$msmtp_to"
+      if [ "${msmtp_user}" ] && [ "${msmtp_pass}" ]
+      then
+         printf "Subject: $notification_message\n\n$mail_text" | msmtp --host=$msmtp_host --port=$msmtp_port --user=$msmtp_user --passwordeval="echo -n $msmtp_pass" --from=$msmtp_from --auth=on --tls=$msmtp_tls "$msmtp_args" -- "$msmtp_to"
+      else
+         printf "Subject: $notification_message\n\n$mail_text" | msmtp --host=$msmtp_host --port=$msmtp_port --from=$msmtp_from --auth=on --tls=$msmtp_tls "$msmtp_args" -- "$msmtp_to"
+      fi
+   elif [ "${notification_type}" = "signal" ]
+   then
+      if [ "${notification_files_preview_count}" ]
+      then
+         signal_text="$(echo -e "${notification_icon} ${notification_message}\nMost recent ${notification_files_preview_count} ${notification_files_preview_type} files:\n${notification_files_preview_text//$'\n'/'\n'}")"
+      else
+         signal_text="$(echo -e "${notification_icon} ${notification_message}")"
+      fi
+      escaped_signal_text=$(printf "%s" "$signal_text" | sed ':a;N;$!ba;s/\r//g;s/\n/\\n/g')
+      notification_result="$(curl --silent --output /dev/null --write-out "%{http_code}" --request POST "http://${signal_host}:${signal_port}/v2/send" \
+         --header 'Content-Type: application/json' \
+         --data "{\"message\": \"${escaped_signal_text}\", \"number\": \"${signal_number}\", \"recipients\": [ \"${signal_recipient}\" ]}")"
+      curl_exit_code="$?"
    fi
    if [ "${notification_type}" ] && [ "${notification_type}" != "msmtp" ]
    then
       if [ "${notification_result:0:1}" -eq 2 ]
       then
-         log_debug "${notification_type} ${notification_classification} notification sent successfully"
+         log_debug "${notification_type_tc} ${notification_classification} notification sent successfully"
       else
-         log_error "${notification_type} ${notification_classification} notification failed with http status code: ${notification_result} and curl exit code: ${curl_exit_code}"
+         log_error "${notification_type_tc} ${notification_classification} notification failed with http status code: ${notification_result} and curl exit code: ${curl_exit_code}"
          if [ "${notification_result}" = "000" ] && [ "${curl_exit_code}" = "6" ]
          then
             log_error " - HTTP status code '000' and curl exit code '6' means it cannot connect to the server. Please check your network settings"
@@ -2132,15 +2120,16 @@ command_line_builder()
 synchronise_user()
 {
    log_info "Sync user: ${user}"
-   if [ "${synchronisation_delay}" -ne 0 ]
+   if [ "${download_delay}" -ne 0 ]
    then
-      log_info "Delay for ${synchronisation_delay} minutes"
-      sleep "${synchronisation_delay}m"
+      log_info "Delay for ${download_delay} minutes"
+      sleep "${download_delay}m"
    fi
    while true
    do
-      synchronisation_start_time="$(date +'%s')"
-      log_info "Synchronisation starting at $(date +%H:%M:%S -d "@${synchronisation_start_time}")"
+      download_start_time="$(date +'%s')"
+      download_time="$(date +%s -d '+15 minutes')"
+      log_info "Download starting at $(date +%H:%M:%S -d "@${download_start_time}")"
       source <(grep debug_logging "${config_file}")
       chown -R "${user_id}:${group_id}" "/config"
       check_keyring_exists
@@ -2166,7 +2155,6 @@ synchronise_user()
          if [ "${check_files_count}" -gt 0 ]
          then
             log_debug "Starting download of new files for user: ${user}"
-            synchronisation_time="$(date +%s -d '+15 minutes')"
             log_debug "Downloading new files using password stored in keyring file..."
             >/tmp/icloudpd/icloudpd_download_error
             IFS=$'\n'
@@ -2202,7 +2190,7 @@ synchronise_user()
                else
                   # 结束时间、下次同步时间
                   syn_end_time="$(date '+%H:%M:%S')"
-                  syn_next_time="$(date +%H:%M:%S -d "${synchronisation_interval} seconds")"
+                  syn_next_time="$(date +%H:%M:%S -d "${download_interval} seconds")"
                   send_notification "failure" "iCloudPD container failure" "1" "从 iCloud 图库下载新照片失败，将在 ${syn_next_time} 再次尝试" "" "" "" "下载 ${name} 的 iCloud 图库新照片失败" "将在 ${syn_next_time} 再次尝试"
                fi
             else
@@ -2241,10 +2229,10 @@ synchronise_user()
                   remove_empty_directories
                fi
                # set_owner_and_permissions_downloads
-               log_info "Synchronisation complete for ${user}"
+               log_info "Download complete for ${user}"
                if [ "${notification_type}" ] && [ "${remote_sync_complete_notification}" = true ]
                then
-                  send_notification "remotesync" "iCloudPD remote synchronisation complete" "0" "iCloudPD has completed a remote synchronisation request for Apple ID: ${apple_id}"
+                  send_notification "remotesync" "iCloudPD remote download complete" "0" "iCloudPD has completed a remote download request for Apple ID: ${apple_id}"
                   unset remote_sync_complete_notification
                fi
             fi
@@ -2258,26 +2246,26 @@ synchronise_user()
          display_multifactor_authentication_expiry
       fi
       log_debug "iCloud login counter = ${login_counter}"
-      synchronisation_end_time="$(date +'%s')"
-      log_info "Synchronisation ended at $(date +%H:%M:%S -d "@${synchronisation_end_time}")"
-      log_info "Total time taken: $(date +%H:%M:%S -u -d "@$((synchronisation_end_time - synchronisation_start_time))")"
+      download_end_time="$(date +'%s')"
+      log_info "Download ended at $(date +%H:%M:%S -d "@${download_end_time}")"
+      log_info "Total time taken: $(date +%H:%M:%S -u -d "@$((download_end_time - download_start_time))")"
       if [ "${single_pass:=false}" = true ]
       then
          log_debug "Single Pass mode set, exiting"
          exit 0
       else
-         sleep_time="$((synchronisation_interval - synchronisation_end_time + synchronisation_start_time))"
+         sleep_time="$((download_interval - download_end_time + download_start_time))"
          if [ "${sleep_time}" -ge "72000" ]
          then
-            log_info "Next synchronisation at $(date +%c -d "${sleep_time} seconds")"
+            log_info "Next download at $(date +%c -d "${sleep_time} seconds")"
          else
-            log_info "Next synchronisation at $(date +%H:%M:%S -d "${sleep_time} seconds")"
+            log_info "Next download at $(date +%H:%M:%S -d "${sleep_time} seconds")"
          fi
          unset check_exit_code check_files_count download_exit_code
          unset new_files
-         if [ "${notification_type}" = "Telegram" ] && [ "${telegram_polling}" = true ]
+         if [ "${notification_type}" = "telegram" ] && [ "${telegram_polling}" = true ]
          then
-            log_info "Monitoring ${notification_type} for remote commands prefix: ${user}"
+            log_info "Monitoring ${notification_type_tc} for remote commands prefix: ${user}"
             listen_counter=0
             poll_sleep=30
             while [ "${listen_counter}" -lt "${sleep_time}" ]
@@ -2289,7 +2277,7 @@ synchronise_user()
                   telegram_update_id_offset="$(head -1 "${telegram_update_id_offset_file}")"
                   log_debug "Polling Telegram for updates newer than: ${telegram_update_id_offset}"
                   telegram_update_id_offset_inc=$((telegram_update_id_offset + 1))
-                  latest_updates="$(curl --request POST --silent --data "allowed_updates=message" --data "offset=${telegram_update_id_offset_inc}" "${telegram_base_url}/getUpdates" | jq .result[])"
+                  latest_updates="$(curl --request POST --silent --data "allowed_updates=message" --data "offset=${telegram_update_id_offset_inc}" "${telegram_base_url}/getUpdates" | jq .result[] 2>/dev/null)"
                   if [ "${latest_updates}" ]
                   then
                      latest_update_ids="$(echo "${latest_updates}" | jq -r '.update_id')"
@@ -2317,9 +2305,9 @@ synchronise_user()
                               log_debug "Remote authentication message match: ${check_update_text}"
                               if [ "${icloud_china}" = false ]
                               then
-                                 send_notification "remotesync" "iCloudPD remote synchronisation initiated" "0" "iCloudPD has detected a remote authentication request for Apple ID: ${apple_id}"
+                                 send_notification "remotesync" "iCloudPD remote download initiated" "0" "iCloudPD has detected a remote authentication request for Apple ID: ${apple_id}"
                               else
-                                 send_notification "remotesync" "iCloudPD remote synchronisation initiated" "0" "iCloudPD将以Apple ID: ${apple_id}发起身份验证"
+                                 send_notification "remotesync" "iCloudPD remote download initiated" "0" "iCloudPD将以Apple ID: ${apple_id}发起身份验证"
                               fi
 			                     rm "/config/${cookie_file}" "/config/${cookie_file}.session"
                               log_debug "Starting remote authentication process"
@@ -2355,10 +2343,10 @@ synchronise_user()
                            log_debug "Remote sync initiated"
                            if [ "${icloud_china}" = false ]
                            then
-                              send_notification "remotesync" "iCloudPD remote synchronisation initiated" "0" "iCloudPD has detected a remote synchronisation request for Apple ID: ${apple_id}"
+                              send_notification "remotesync" "iCloudPD remote download initiated" "0" "iCloudPD has detected a remote download request for Apple ID: ${apple_id}"
                               remote_sync_complete_notification=true
                            else
-                              send_notification "remotesync" "iCloudPD remote synchronisation initiated" "0" "启动成功，开始同步当前 Apple ID 中的照片" "" "" "" "开始同步 ${name} 的 iCloud 图库" "Apple ID: ${apple_id}"
+                              send_notification "remotesync" "iCloudPD remote download initiated" "0" "启动成功，开始同步当前 Apple ID 中的照片" "" "" "" "开始同步 ${name} 的 iCloud 图库" "Apple ID: ${apple_id}"
                            fi
                               poll_sleep=30
                            break
