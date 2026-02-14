@@ -1,5 +1,6 @@
 #!/bin/ash
 
+
 ##### Functions #####
 initialise_script()
 {
