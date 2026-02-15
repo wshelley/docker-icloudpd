@@ -215,15 +215,17 @@ adds asset id from iCloud to all file names and does not need de-duplication. De
 **bark_server**: Mandatory if notification_type set to 'Bark'. This is the name of your Bark server. Please note that the port should not be included and currently the project only supports http.
 If you use the official Bark server, please fill the field with `api.day.app`.
 
+**msmtp_auth**: Mandatory if notification_type set to `msmtp`. Set to `on` or `off` to enable or disable authentication. Defaults to `on`
+
 **msmtp_host**: Mandatory if notification_type set to `msmtp`. The domain of your smtp server
 
 **msmtp_port**: Mandatory if notification_type set to `msmtp`. The port of the smtp service. Normally 465 or 587
 
-**msmtp_tls**: Mandatory if notification_type set to `msmtp`. Set to `on` or `off` to enable or disable TLS encryption.
+**msmtp_tls**: Mandatory if notification_type set to `msmtp`. Set to `on` or `off` to enable or disable TLS encryption. Defaults to `on`
 
 **msmtp_from**: Mandatory if notification_type set to `msmtp`. The sender's email address
 
-**msmtp_user**: Mandatory if notification_type set to `msmtp`. The login username for your SMTP provider.
+**msmtp_user**: Mandatory if notification_type set to `msmtp`. The login username for your SMTP provider
 
 **msmtp_pass**: Mandatory if notification_type set to `msmtp`. The password for the login user
 
@@ -360,7 +362,7 @@ Dockerfile has a health check which will change the status of the container to '
 Every 30 days, the cookie will expire and need to be re-authenticated. This can be done by running the re-authentication script:
 
 ```
-docker container exec -it reauth.sh
+docker exec -it icloudpd reauth.sh
 ```
 
 It will then launch the re-authentication process, presenting you with an MFA code on your iDevice and asking for this new code on the command line. e.g:
